@@ -1,0 +1,31 @@
+<section id="dashboard">
+
+  <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+    <h1 class="page-header">Dashboard</h1>
+
+    <div class="row placeholders">
+      <div class="col-xs-6 col-sm-3 placeholder">
+        <div class="monitor">
+          <h3>{{sessionCount.connected}}</h3>
+          <h4>Users</h4>
+          <span class="text-muted">Total: {{sessionCount.connected+sessionCount.disconnected}}</span>
+        </div>
+      </div>
+      <div class="col-xs-6 col-sm-3 placeholder">
+        <div class="monitor">
+          <h3>{{traffic.uploadByteSec}} B/s</h3>
+          <h4>Upload</h4>
+          <span class="text-muted">Total: {{traffic.uploadedBytes}} B</span>
+        </div>
+      </div>
+      <div class="col-xs-6 col-sm-3 placeholder">
+        <div class="monitor">
+          <h3>{{traffic.downloadByteSec}} B/s</h3>
+          <h4>Download</h4>
+          <span class="text-muted">Total: {{traffic.downloadedBytes}} B</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>

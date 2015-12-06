@@ -1,0 +1,30 @@
+<section id="disconnected">
+
+  <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+    <h1 class="page-header">Disconnected sessions</h1>
+
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+        <tr>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Last active</th>
+          <th>Uploaded</th>
+          <th>Downloaded</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr ng-repeat="x in sessions">
+          <td>{{x.id}}</td>
+          <td>{{x.username}}</td>
+          <td>{{x.lastCommand}}</td>
+          <td>{{x.uploadedBytes}}</td>
+          <td>{{x.downloadedBytes}}</td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</section>

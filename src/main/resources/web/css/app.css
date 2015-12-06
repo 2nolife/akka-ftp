@@ -1,0 +1,6 @@
+
+.nofloat { font-size:0; height:0; width:0; clear:both; }
+
+.navbar-header .logo { width:50px; float:left; margin-top:-15px; margin-right:20px; }
+
+#control .monitor button { width:150px; height:50px; }
