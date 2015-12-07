@@ -111,7 +111,6 @@ trait FileSystemOps {
 
 trait CommandFactory {
   def create(text: String, session: Session): Command
-  def names: Seq[String]
 }
 
 class DefaultCommandFactory extends CommandFactory {
@@ -159,14 +158,6 @@ class DefaultCommandFactory extends CommandFactory {
 
   override def create(text: String, session: Session): Command =
     cmd(text.takeWhile(' '!=), text.dropWhile(' '!=).trim, session)
-
-  override def names: Seq[String] =
-    "USER" :: "PASS" :: "PWD" :: "TYPE" :: "MODE" :: "STRU" :: "NOOP" :: "SYST" ::
-    "ALLO" :: "PORT" :: "LIST" :: "NLST" :: "CWD" :: "RETR" :: "STOR" :: "APPE" ::
-    "STOU" :: "REST" :: "CDUP" :: "DELE" :: "MKD" :: "RNFR" :: "RNTO" :: "STAT" ::
-    "ABOR" :: "QUIT" ::
-    "EPRT" ::
-    "TVFS" :: "MDTM" :: Nil
 }
 
 /*** Special commands ***/
