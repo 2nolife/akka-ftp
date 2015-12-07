@@ -1,12 +1,12 @@
 # Akka-FTP
 
-The Akka-FTP project is the reactive FTP server which uses Akka actors under the hood. It also provides the AngularJS web dashboard with Spray in the backend. Version 1.0 and the documantation expected to be released in December 2015
+The Akka-FTP project is the reactive FTP server which uses Akka actors under the hood. It also provides the AngularJS web dashboard with Spray in the backend. Version 1.0 and the documantation expected to be released in December 2015.
 
-For details check out the [Akka-FTP blog](http://akka-ftp.blogspot.co.uk)
+For details check out the [Akka-FTP blog](http://akka-ftp.blogspot.co.uk).
 
-## Running the project ##
+## Running the server ##
 
-You need [SBT](http://www.scala-sbt.org) to build and run the server. Clone the repository and from the project directory `sbt run`
+You need to install [SBT](http://www.scala-sbt.org) to build and run the server. Then clone the repository and from the project directory `sbt run`:
 
 ```
 $ sbt run
