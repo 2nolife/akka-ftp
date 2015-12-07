@@ -13,7 +13,8 @@ object Boot {
 }
 
 class Boot(hostname: String, port: Int, ftpstate: FtpState) {
-  ftpstate.system.actorOf(RestService.props(hostname, port, ftpstate), name = "rest-service")
+  val host = if (hostname == "") "0.0.0.0" else hostname
+  ftpstate.system.actorOf(RestService.props(host, port, ftpstate), name = "rest-service")
 }
 
 class AdminAuthenticator(ftpstate: FtpState) extends UserPassAuthenticator[BasicUserContext] {

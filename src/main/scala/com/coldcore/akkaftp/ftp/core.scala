@@ -25,7 +25,7 @@ object Boot {
 
 class Boot(ftpstate: FtpState) {
   def endpoint(hostname: String, port: Int): InetSocketAddress = hostname match {
-    case "all" => new InetSocketAddress(port)
+    case "" => new InetSocketAddress(port)
     case _ => new InetSocketAddress(hostname, port)
   }
   val ep = endpoint(ftpstate.host, ftpstate.port)

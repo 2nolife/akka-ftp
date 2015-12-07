@@ -50,55 +50,69 @@ class RestService(hostname: String, port: Int, ftpstate: FtpState) extends HttpS
     authenticate(BasicAuth(new AdminAuthenticator(ftpstate), "Akka FTP")) { user =>
       pathPrefix("api") {
         path("dashboard") {
-          complete {
-            val rg = ftpstate.registry
-            Dashboard(
-              SessionCount(rg.sessions.size, rg.disconnected.size),
-              Traffic(rg.uploadedBytes, rg.downloadedBytes, rg.uploadByteSec, rg.downloadByteSec))
+          get {
+            complete {
+              val rg = ftpstate.registry
+              Dashboard(
+                SessionCount(rg.sessions.size, rg.disconnected.size),
+                Traffic(rg.uploadedBytes, rg.downloadedBytes, rg.uploadByteSec, rg.downloadByteSec))
+            }
           }
         } ~
-        path("sessions") { _ =>
-          val rg = ftpstate.registry
-          val sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
-          parameter('disconnected.?) {
-            case Some(_) =>
-              complete(Sessions(rg.disconnected.map(toSession(sdf))))
-            case None =>
-              complete(Sessions(rg.sessions.map(toSession(sdf))))
-          }
-        } ~
-        path("shutdown") {
-          complete {
-            val system = context.system
-            system.scheduler.scheduleOnce(1 second)(system.shutdown())
-            SimpleMessage("Shutting down in 1 second ...")
+        path("sessions") {
+          get {
+            parameter('disconnected.?) {
+              param =>
+                val rg = ftpstate.registry
+                val sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
+                param match {
+                  case Some(_) =>
+                    complete(Sessions(rg.disconnected.map(toSession(sdf))))
+                  case None =>
+                    complete(Sessions(rg.sessions.map(toSession(sdf))))
+                }
+            }
           }
         } ~
         pathPrefix("action") {
           path("suspend") {
-            complete {
-              ftpstate.suspended = true
-              SimpleMessage("Not accepting new connections")
+            get {
+              complete {
+                ftpstate.suspended = true
+                SimpleMessage("Not accepting new connections")
+              }
             }
           } ~
           path("resume") {
-            complete {
-              ftpstate.suspended = false
-              SimpleMessage("Accepting new connections")
+            get {
+              complete {
+                ftpstate.suspended = false
+                SimpleMessage("Accepting new connections")
+              }
             }
           } ~
           path("stop") {
-            complete { SimpleMessage("Stop is not implemented") } //todo
+            get {
+              complete {
+                SimpleMessage("Stop is not implemented") //todo
+              }
+            }
           } ~
           path("shutdown") {
-            complete {
-              val system = context.system
-              system.scheduler.scheduleOnce(1 second)(system.shutdown())
-              SimpleMessage("Shutting down in 1 second")
+            get {
+              complete {
+                val system = context.system
+                system.scheduler.scheduleOnce(1 second)(system.shutdown())
+                SimpleMessage("Shutting down in 1 second")
+              }
             }
           } ~
           path("status") {
-            complete { SimpleMessage("Status is not implemented") } //todo
+            get {
+              complete {
+                SimpleMessage("Status is not implemented") //todo
+              }
+            }
           }
         } ~
         path(Segments) { xs =>
