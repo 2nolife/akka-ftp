@@ -18,9 +18,9 @@ To stop the server either `^C` or send a GET request to [http://localhost:2080/a
 
 ## Big thank you ##
 
-[ColoradoFTP](https://bitbucket.org/nolife/coloradoftp) for the FTP commands and ideas
+[ColoradoFTP](https://bitbucket.org/nolife/coloradoftp) for the FTP commands and ideas.
 
-[Gabbler](https://github.com/hseeberger/gabbler) the excellent example for Akka, Spray and AngularJS
+[Gabbler](https://github.com/hseeberger/gabbler) the excellent example of Akka, Spray and AngularJS.
 
 ## Contribution policy ##
 
