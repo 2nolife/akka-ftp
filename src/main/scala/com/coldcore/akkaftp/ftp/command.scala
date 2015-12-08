@@ -92,20 +92,26 @@ trait FileSystemOps {
   def filenamePath(filename: String): String =
     if (filename.startsWith("/")) filename else (session.currentDir.path+"/"+filename).replace("//", "/")
 
-  def readableFileChannel(filename: String): Either[ReadableByteChannel,Reply] = {
+  def filenameFile(filename: String): Either[Reply,File] = {
     val path = filenamePath(filename)
-    val x: Either[ReadableByteChannel,Reply] =
-      try { Left(session.ftpstate.fileSystem.file(path, session).read(session.dataMarker)) }
-      catch { case e: FileSystemException => Right(handleFsError(e)) }
-    x.left.map(rbc => session.ftpstate.dataFilterApplicator.applyFilters(rbc, session))
+    try { Right(session.ftpstate.fileSystem.file(path, session)) }
+    catch { case e: FileSystemException => Left(handleFsError(e)) }
   }
 
-  def writableFileChannel(filename: String, append: Boolean = false): Either[WritableByteChannel,Reply] = {
+  def readableFileChannel(filename: String): Either[Reply,ReadableByteChannel] = {
     val path = filenamePath(filename)
-    val x: Either[WritableByteChannel,Reply] =
-      try { Left(session.ftpstate.fileSystem.file(path, session).write(append)) }
-      catch { case e: FileSystemException => Right(handleFsError(e)) }
-    x.left.map(wbc => session.ftpstate.dataFilterApplicator.applyFilters(wbc, session))
+    val x: Either[Reply,ReadableByteChannel] =
+      try { Right(session.ftpstate.fileSystem.file(path, session).read(session.dataMarker)) }
+      catch { case e: FileSystemException => Left(handleFsError(e)) }
+    x.right.map(rbc => session.ftpstate.dataFilterApplicator.applyFilters(rbc, session))
+  }
+
+  def writableFileChannel(filename: String, append: Boolean = false): Either[Reply,WritableByteChannel] = {
+    val path = filenamePath(filename)
+    val x: Either[Reply,WritableByteChannel] =
+      try { Right(session.ftpstate.fileSystem.file(path, session).write(append)) }
+      catch { case e: FileSystemException => Left(handleFsError(e)) }
+    x.right.map(wbc => session.ftpstate.dataFilterApplicator.applyFilters(wbc, session))
   }
 }
 
@@ -147,6 +153,7 @@ class DefaultCommandFactory extends CommandFactory {
 
       case "TVFS" => TvfsCommand(session)
       case "MDTM" => MdtmCommand(param, session)
+      case "SIZE" => SizeCommand(param, session)
       case _ => null
     })
 
@@ -333,14 +340,14 @@ case class PortCommand(param: String, session: Session) extends Command with Log
 
 abstract class ListNlstCommand(param: String, val session: Session) extends Command with LoggedIn with DataTransferOps with FileSystemOps {
   override def exec: Reply = {
-    val either: Either[File,Reply] =
-      try { Left {
+    val either: Either[Reply,File] =
+      try { Right {
           if (param.nonEmpty && !param.contains("*") && !param.startsWith("-")) session.ftpstate.fileSystem.file(param, session)
           else session.currentDir
-      }} catch { case e: FileSystemException => Right(handleFsError(e)) }
+      }} catch { case e: FileSystemException => Left(handleFsError(e)) }
 
     either match {
-      case Left(listdir) =>
+      case Right(listdir) =>
         val str = serializeList(listdir.listFiles)
         val rbc = Channels.newChannel(new ByteArrayInputStream(str.getBytes(UTF8)))
         session.dataTransferMode = Some(ListDTM)
@@ -349,7 +356,7 @@ abstract class ListNlstCommand(param: String, val session: Session) extends Comm
           openerStart()
           Reply(150, s"Opening A mode data connection for ${listdir.path}.")
         }
-      case Right(reply) =>
+      case Left(reply) =>
         reply
     }
   }
@@ -405,7 +412,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
       case filename =>
         closeChannel()
         readableFileChannel(filename) match {
-          case Left(rbc) =>
+          case Right(rbc) =>
             openerNotSet.map { reply =>
               rbc.safeClose()
               reply
@@ -416,7 +423,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
               openerStart()
               Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
             }
-          case Right(reply) =>
+          case Left(reply) =>
             reply
         }
     }
@@ -426,7 +433,7 @@ abstract class StorAppeStouCommand(session: Session) extends Command with Logged
   def execute(mode: DataTransferMode, filename: String, append: Boolean = false): Reply = {
     closeChannel()
     writableFileChannel(filename, append) match {
-      case Left(wbc) =>
+      case Right(wbc) =>
         openerNotSet.map { reply =>
           wbc.safeClose()
           reply
@@ -437,7 +444,7 @@ abstract class StorAppeStouCommand(session: Session) extends Command with Logged
           openerStart()
           Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
         }
-      case Right(reply) =>
+      case Left(reply) =>
         reply
     }
   }
@@ -631,15 +638,9 @@ case class MdtmCommand(param: String, session: Session) extends Command with Log
       case "" =>
         Reply(501, "Send file name.")
       case filename =>
-        val path = filenamePath(filename)
-        val either: Either[File,Reply] =
-          try { Left(session.ftpstate.fileSystem.file(path, session)) }
-          catch { case e: FileSystemException => Right(handleFsError(e)) }
-
-        if (either.isRight) {
-          either.right.get
-        } else {
-          either.left.get.listFile.collect {
+        val either = filenameFile(filename)
+        either.left.getOrElse {
+          either.right.get.listFile.collect {
             case file if !file.directory =>
               val sdf = new SimpleDateFormat("yyyyMMddHHmmss")
               sdf.setTimeZone(TimeZone.getTimeZone("GMT"))
@@ -651,4 +652,24 @@ case class MdtmCommand(param: String, session: Session) extends Command with Log
     }
 }
 
-// todo Mlsd, Mlst, Size
+case class SizeCommand(param: String, session: Session) extends Command with LoggedIn with FileSystemOps {
+  override def exec: Reply =
+    param match {
+      case "" =>
+        Reply(501, "Send file name.")
+      case _ if session.ftpstate.dataFilterApplicator.filters(session).exists(_.modifyDataLength) =>
+        Reply(550, s"SIZE unavailable for TYPE ${session.dataType}, MODE ${session.dataMode}, STRU ${session.dataStructure}.")
+      case filename =>
+        val either = filenameFile(filename)
+        either.left.getOrElse {
+          either.right.get.listFile.collect {
+            case file if !file.directory =>
+              Reply(213, file.size.toString)
+          } getOrElse {
+            Reply(550, "File unavailable.")
+          }
+        }
+    }
+}
+
+// todo Mlsd, Mlst
