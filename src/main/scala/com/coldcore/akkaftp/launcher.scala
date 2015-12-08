@@ -3,20 +3,20 @@ package com.coldcore.akkaftp
 import akka.actor.ActorSystem
 import com.coldcore.akkaftp.ftp.core.FtpState
 
-object Launcher {
-
-  def startFtpService(system: ActorSystem): FtpState = {
-    import com.coldcore.akkaftp.ftp.core.Boot
-
+class Launcher {
+  def createFtpState(system: ActorSystem): FtpState = {
     val hostname = Settings(system).hostname
     val portnumb = Settings(system).port
     val guest = Settings(system).guest
     val homedir = Settings(system).homedir
     val timeout = Settings(system).timeout
 
-    val ftpstate = new FtpState(system, guest, homedir) { host = hostname; port = portnumb }
+    new FtpState(system, guest, homedir) { host = hostname; port = portnumb }
+  }
+
+  def startFtpService(system: ActorSystem, ftpstate: FtpState) {
+    import com.coldcore.akkaftp.ftp.core.Boot
     Boot(ftpstate)
-    ftpstate
   }
 
   def startRestService(system: ActorSystem, ftpstate: FtpState) {
@@ -28,10 +28,11 @@ object Launcher {
     Boot(hostname, port, ftpstate)
   }
 
-  def main(args: Array[String]): Unit = {
+  def start() {
     val system = ActorSystem("akkaftp-system")
 
-    val ftpstate = startFtpService(system)
+    val ftpstate = createFtpState(system)
+    startFtpService(system, ftpstate)
     startRestService(system, ftpstate)
 
     sys.addShutdownHook {
@@ -40,5 +41,11 @@ object Launcher {
     }
 
     system.awaitTermination()
+  }
+}
+
+object main {
+  def main(args: Array[String]) {
+    new Launcher().start()
   }
 }

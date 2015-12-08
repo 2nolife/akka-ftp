@@ -47,7 +47,7 @@ class FtpState(val system: ActorSystem, val guest: Boolean, val usersdir: String
   val dataFilterApplicator = new DataFilterApplicator
   val dataFilterFactory = new DataFilterFactory(fileSystem.endOfLine)
 
-  var host = "all"
+  var host = ""
   var port = 21
 
   var suspended = false

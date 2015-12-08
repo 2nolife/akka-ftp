@@ -151,9 +151,9 @@ class DefaultCommandFactory extends CommandFactory {
     })
 
   /** Overwrite this method to add your specific commands
-    * eg. def cmd = mycmd erElse defcmd orElse unkcmd
+    * eg. def cmd = mycmd getOrElse defcmd getOrElse unkcmd
     */
-  def cmd(name: String, param: String, session: Session) =
+  def cmd(name: String, param: String, session: Session): Command =
     defcmd(name, param, session) getOrElse UnknownCommand(session)
 
   override def create(text: String, session: Session): Command =
@@ -294,7 +294,7 @@ case class TypeCommand(param: String, session: Session) extends Command with Log
 }
 
 case class NoopCommand(param: String, session: Session) extends Command {
-  override def exec: Reply = Reply(200, s"OK $param".trim)
+  override def exec: Reply = Reply(200, s"OK $param")
 }
 
 case class AlloCommand(session: Session) extends Command {

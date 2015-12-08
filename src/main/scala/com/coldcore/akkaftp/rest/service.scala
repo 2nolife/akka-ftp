@@ -61,16 +61,12 @@ class RestService(hostname: String, port: Int, ftpstate: FtpState) extends HttpS
         } ~
         path("sessions") {
           get {
-            parameter('disconnected.?) {
-              param =>
-                val rg = ftpstate.registry
-                val sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")
-                param match {
-                  case Some(_) =>
-                    complete(Sessions(rg.disconnected.map(toSession(sdf))))
-                  case None =>
-                    complete(Sessions(rg.sessions.map(toSession(sdf))))
-                }
+            parameter('disconnected.?) { dsc =>
+              complete {
+                val (rg, sdf) = (ftpstate.registry, new SimpleDateFormat("dd/MM/yyyy HH:mm:ss"))
+                val sessions = dsc.map(_ => rg.disconnected).getOrElse(rg.sessions).map(toSession(sdf))
+                Sessions(sessions)
+              }
             }
           }
         } ~
