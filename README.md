@@ -3,6 +3,7 @@
 The Akka-FTP project is the reactive FTP server which uses Akka actors under the hood. It also provides the AngularJS web dashboard with Spray backend. Version 1.0 and the documantation expected to be released in December 2015.
 
 For details check out the [Akka-FTP blog](http://akka-ftp.blogspot.co.uk).
+Please read the [introduction chapter](http://akka-ftp.blogspot.co.uk/2015/12/introduction-to-akka-ftp.html) and the follow-up posts.
 
 ## Running the server ##
 
