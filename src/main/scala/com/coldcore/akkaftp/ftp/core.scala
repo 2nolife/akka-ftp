@@ -47,32 +47,34 @@ class Boot(ftpstate: FtpState) {
 class FtpState(val system: ActorSystem,
                val hostname: String, val port: Int,
                val guest: Boolean, val usersdir: String,
-               val externalIp: String, pasvPorts: Seq[Int]) { //todo implicit ftpstate and system
+               val externalIp: String, val pasvPorts: Seq[Int]) { //todo implicit ftpstate and system
   val registry = new Registry
   val fileSystem: FileSystem = new DiskFileSystem(usersdir)
   val userStore: UserStore = new PropsUserStore(Util.readProperties("/userstore.properties"))
   val commandFactory: CommandFactory = new DefaultCommandFactory
   val sessionFactory = new SessionFactory
+  val dataConnectorVars = new DataConnectorVars(pasvPorts, externalIp, hostname)
   val dataFilterApplicator = new DataFilterApplicator
-  val dataFilterFactory = new DataFilterFactory(fileSystem.endOfLine)
-  val dataConnectorVars = new DataConnectorVars(pasvPorts, externalIp)
+  lazy val dataFilterFactory = new DataFilterFactory(fileSystem.endOfLine)
 
   var suspended = false
   val attributes = new CustomAttributes
 }
 
-class DataConnectorVars(val ports: Seq[Int], val externalIp: String) {
+class DataConnectorVars(val ports: Seq[Int], val externalIp: String, boundHostname: String) {
   val remoteIpResolv: String => String = { remoteip =>
     val ipaddresses =
       NetworkInterface.getNetworkInterfaces.asScala.flatMap { netint =>
         netint.getInetAddresses.asScala.map(_.getAddress.map(_ & 0xff).mkString("."))
       }
-    ipaddresses.collectFirst {
-      case addr if remoteip == addr => addr
-      case addr if addr.split("\\.").size == 4 && remoteip.startsWith(addr.split("\\.").take(2).mkString("", ".", ".")) => addr
-    } getOrElse {
-      externalIp
-    }
+    if (boundHostname.nonEmpty) externalIp
+    else // bound to all interfaces, pick the best match
+      ipaddresses.collectFirst {
+        case addr if remoteip == addr => addr
+        case addr if addr.split("\\.").size == 4 && remoteip.startsWith(addr.split("\\.").take(2).mkString("", ".", ".")) => addr
+      } getOrElse {
+        externalIp
+      }
   }
 }
 

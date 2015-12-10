@@ -26,18 +26,27 @@ class CustomCommandFactory extends DefaultCommandFactory {
     mycmd(name, param, session) getOrElse super.cmd(name, param, session)
 }
 
-class CustomFtpState(system: ActorSystem, guest: Boolean, usersdir: String) extends FtpState(system, guest, usersdir) {
-  override val commandFactory = new CustomCommandFactory
+class CustomFtpState(override val system: ActorSystem,
+                     override val hostname: String,
+                     override val port: Int,
+                     override val guest: Boolean,
+                     override val usersdir: String,
+                     override val externalIp: String,
+                     override val pasvPorts: Seq[Int]) extends
+  FtpState(system, hostname, port, guest, usersdir, externalIp, pasvPorts) {
+    override val commandFactory = new CustomCommandFactory
 }
 
 class CustomLauncher extends Launcher {
   override def createFtpState(system: ActorSystem): FtpState = {
     val hostname = Settings(system).hostname
-    val portnumb = Settings(system).port
+    val port = Settings(system).port
     val guest = Settings(system).guest
     val homedir = Settings(system).homedir
+    val externalIp = Settings(system).externalIp
+    val pasvPorts = Settings(system).pasvPorts
 
-    new CustomFtpState(system, guest, homedir) { host = hostname; port = portnumb }
+    new CustomFtpState(system, hostname, port, guest, homedir, externalIp, pasvPorts)
   }
 }
 

@@ -36,7 +36,7 @@ object Dependencies {
     sprayJson,
     sprayRouting,
     akkaTestkit % "test",
-    scalaTest   % "test",
+    scalaTest   % "test,it",
     mockito     % "test"
   )
 }

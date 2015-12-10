@@ -178,9 +178,7 @@ class DataConnectionInitiator(endpoint: InetSocketAddress, session: Session) ext
   def receive = {
     case Tcp.Connected(remote, _) => // connected
       log.debug("Connected to remote address {}", remote)
-      val x = context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next)
-      sender ! Tcp.Register(x)
-      x ! DataConnection.StartTransfer
+      sender ! Tcp.Register(context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next))
 
     case DataConnection.Stopped => // data connection stopped
       context.stop(self)
@@ -205,7 +203,6 @@ object DataConnection { //todo inactive timeout
 
   case object Stopped
   case object Abort
-  case object StartTransfer
 
   sealed trait ReportState
   case object Success extends ReportState
@@ -220,19 +217,24 @@ object DataConnection { //todo inactive timeout
 
 class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: Session) extends Actor with ActorLogging {
   import com.coldcore.akkaftp.ftp.connection.DataConnection._
+  import context.dispatcher
   implicit def Buffer2ByteString(x: ByteBuffer): ByteString = CompactByteString(x)
 
+  case object StartTransfer
   case object Write
   case object Ack extends Tcp.Event
 
   context.watch(connection)
   session.dataConnection = Some(self)
+  log.debug(s"Data connection attached to session #${session.id}")
 
   val buffer = ByteBuffer.allocate(1024*8) // 8 KB buffer
   var report: Option[ReportState] = None
   var rbc: ReadableByteChannel = _
   var wbc: WritableByteChannel = _
   var transferredBytes = 0L
+
+  self ! StartTransfer // check if ready and start data exchange
 
   val readReceive: Actor.Receive = {
     case Tcp.Received(data) => // read data from the user
@@ -292,7 +294,8 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
       log.debug("Connection for remote address {} failed", remote)
       context.stop(self)
 
-    case StartTransfer => // start transfer now
+    case StartTransfer if session.dataTransferMode.isDefined => // start transfer now
+      log.debug("Starting data trasfer with {}", remote)
       session.dataTransferMode.get match {
         case StorDTM | StouDTM => // write from the channel source to a client
           context.become(readReceive orElse defReceive)
@@ -302,6 +305,9 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
           rbc = session.dataTransferChannel.get.asInstanceOf[ReadableByteChannel]
           self ! Write
       }
+
+    case StartTransfer => // reschedule, not ready (client did not send a command yet)
+      context.system.scheduler.scheduleOnce(100.milliseconds, self, StartTransfer)
   }
 
   override def postStop() {

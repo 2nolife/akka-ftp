@@ -1,8 +1,7 @@
 package com.coldcore.akkaftp.ftp
-package connection
+package executor
 
 import com.coldcore.akkaftp.ftp.core.Session
-import com.coldcore.akkaftp.ftp.executor.TaskExecutor
 import org.scalatest._
 import org.scalatest.mock.MockitoSugar
 import akka.actor.ActorSystem
