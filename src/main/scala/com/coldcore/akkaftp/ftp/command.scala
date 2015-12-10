@@ -10,8 +10,13 @@ import java.util.{TimeZone, Locale}
 import java.text.SimpleDateFormat
 import java.io.ByteArrayInputStream
 import java.nio.channels.{WritableByteChannel, ReadableByteChannel, Channels}
-import com.coldcore.akkaftp.ftp.connection.{ControlConnection, DataConnection, DataConnectionInitiator}
+import com.coldcore.akkaftp.ftp.connection.{DataConnector, ControlConnection, DataConnection, DataConnectionInitiator}
 import java.net.InetSocketAddress
+import akka.actor.ActorRef
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Await}
+import ExecutionContext.Implicits.global
+import akka.pattern.ask
 
 case class Reply(code: Int, text: String = "", noop: Boolean = false, next: Option[Reply] = None) {
   def serialize: String =
@@ -54,12 +59,11 @@ trait DataTransferOps {
     if (session.dataOpenerType.isDefined) None
     else Some(Reply(425, "Can't open data connection."))
 
-
   def openerStart() {
     session.dataOpenerType match {
       case Some(PasvDOT) => // PASV parameters active just once per data transfer
         session.dataOpenerType = None
-        //todo
+        session.dataConnection.foreach(_ ! DataConnection.StartTransfer)
       case Some(PortDOT) => // PORT activates data connection initiator
         val (system, ep) = (session.ftpstate.system, session.dataEndpoint.get)
         system.actorOf(DataConnectionInitiator.props(ep, session), name = "data-initiator-"+ID.next)
@@ -132,6 +136,7 @@ class DefaultCommandFactory extends CommandFactory {
       case "SYST" => SystCommand(session)
       case "ALLO" => AlloCommand(session)
       case "PORT" => PortCommand(param, session)
+      case "PASV" => PasvCommand(param, session)
       case "LIST" => ListCommand(param, session)
       case "NLST" => NlstCommand(param, session)
       case "CWD" => CwdCommand(param, session)
@@ -150,6 +155,7 @@ class DefaultCommandFactory extends CommandFactory {
       case "QUIT" => QuitCommand(session)
 
       case "EPRT" => EprtCommand(param, session)
+      case "EPSV" => EpsvCommand(param, session)
 
       case "TVFS" => TvfsCommand(session)
       case "MDTM" => MdtmCommand(param, session)
@@ -315,6 +321,27 @@ case class SystCommand(session: Session) extends Command {
   }
 }
 
+case class PasvCommand(param: String, session: Session) extends Command with LoggedIn {
+  override def exec: Reply = {
+    session.dataOpenerType = None
+    val ref = session.ftpstate.attributes.get[ActorRef](DataConnector.attr).get
+    val x = ref.ask(DataConnector.Accept(session))(1.second).map {
+      case DataConnector.Accepted(ipaddr, port) =>
+        val i = port/256
+        val pstr = i+","+(port-i*256)
+        val ipcs = ipaddr.replaceAll("\\.", ",")
+        session.dataOpenerType = Some(PasvDOT)
+        Reply(227, s"Entering Passive Mode ($ipcs,$pstr).")
+      case DataConnector.Rejected =>
+        Reply(425, "Failed to enter passive mode, try again.")
+    } recover {
+      case _ =>
+        Reply(425, "Can't open data connection.")
+    }
+    Await.result(x, 1.second)
+  }
+}
+
 case class PortCommand(param: String, session: Session) extends Command with LoggedIn {
   override def exec: Reply = {
     val safeInt = (s: String) => try { s.toInt } catch { case _: Throwable => -1 }
@@ -332,7 +359,7 @@ case class PortCommand(param: String, session: Session) extends Command with Log
       session.dataOpenerType = Some(PortDOT)
       session.dataEndpoint = Some(new InetSocketAddress(host, port))
       Reply(200, "PORT command successful.")
-    }.getOrElse {
+    } getOrElse {
       Reply(501, "Send correct IP and port number.")
     }
   }
@@ -585,12 +612,11 @@ case class StatCommand(param: String, session: Session) extends Command with Log
 case class AborCommand(session: Session) extends Command with LoggedIn with Interrupt {
   override val replyClearsInterrupt = true
   override def exec: Reply = {
-    //todo abort PASV listener for the connection
-
+    session.ftpstate.attributes.get[ActorRef](DataConnector.attr).foreach(_ ! DataConnector.Cancel(session))
     session.dataConnection.map { conn =>
       conn ! DataConnection.Abort
       CommonReplies.noop // connection will send proper replies
-    }.getOrElse {
+    } getOrElse {
       Reply(226, "Abort command successful.")
     }
   }
@@ -598,8 +624,7 @@ case class AborCommand(session: Session) extends Command with LoggedIn with Inte
 
 case class QuitCommand(session: Session) extends Command with LoggedIn with Interrupt {
   override def exec: Reply = {
-    //todo abort PASV listener for the connection
-
+    session.ftpstate.attributes.get[ActorRef](DataConnector.attr).foreach(_ ! DataConnector.Cancel(session))
     session.ctrl ! ControlConnection.Poison
     if (session.dataConnection.isEmpty) Reply(221, "Logged out, closing control connection.")
     else Reply(221, "Logged out, closing control connection as soon as data transferred.")
@@ -607,12 +632,11 @@ case class QuitCommand(session: Session) extends Command with LoggedIn with Inte
 }
 
 
-// todo FEAT, Help, Opts, Pasv, Site, SiteHelpCommand
+// todo FEAT, Help, Opts, Site, SiteHelpCommand
 
 case class EprtCommand(param: String, session: Session) extends Command with LoggedIn {
   override def exec: Reply = {
     session.dataOpenerType = None
-
     param.split(Pattern.quote(param.head.toString)) match {
       case Array(_, protocol, address, port) if protocol == "1" || protocol == "2" =>
         session.dataOpenerType = Some(PortDOT)
@@ -626,7 +650,28 @@ case class EprtCommand(param: String, session: Session) extends Command with Log
   }
 }
 
-//todo EPSV
+case class EpsvCommand(param: String, session: Session) extends Command with LoggedIn {
+  override def exec: Reply = {
+    session.dataOpenerType = None
+    param match {
+      case "1" | "2" | "ALL" | "" =>
+        val ref = session.ftpstate.attributes.get[ActorRef](DataConnector.attr).get
+        val x = ref.ask(DataConnector.Accept(session))(1.second).map {
+          case DataConnector.Accepted(_, port) =>
+            session.dataOpenerType = Some(PasvDOT)
+            Reply(229, s"Entering Extended Passive Mode (|||$port|)")
+          case DataConnector.Rejected =>
+            Reply(425, "Failed to enter extended passive mode, try again.")
+        } recover {
+          case _ =>
+            Reply(425, "Can't open data connection.")
+        }
+        Await.result(x, 1.second)
+      case _ =>
+        Reply(522, "Network protocol not supported, use (1,2)")
+    }
+  }
+}
 
 case class TvfsCommand(session: Session) extends Command {
   override def exec: Reply = Reply(200, "OK")

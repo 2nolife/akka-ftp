@@ -6,12 +6,14 @@ import com.coldcore.akkaftp.ftp.core.FtpState
 class Launcher {
   def createFtpState(system: ActorSystem): FtpState = {
     val hostname = Settings(system).hostname
-    val portnumb = Settings(system).port
+    val port = Settings(system).port
     val guest = Settings(system).guest
     val homedir = Settings(system).homedir
     val timeout = Settings(system).timeout
+    val externalIp = Settings(system).externalIp
+    val pasvPorts = Settings(system).pasvPorts
 
-    new FtpState(system, guest, homedir) { host = hostname; port = portnumb }
+    new FtpState(system, hostname, port, guest, homedir, externalIp, pasvPorts)
   }
 
   def startFtpService(system: ActorSystem, ftpstate: FtpState) {

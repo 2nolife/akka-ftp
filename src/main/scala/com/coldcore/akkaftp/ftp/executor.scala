@@ -14,7 +14,7 @@ object TaskExecutor {
 class TaskExecutor(n: Int) extends Actor with ActorLogging {
   import com.coldcore.akkaftp.ftp.executor.TaskExecutor._
 
-  val nodes = context.actorOf(Props[TaskNode]. withRouter(RoundRobinPool(n)), name = "node")
+  val nodes = context.actorOf(Props[TaskNode].withRouter(RoundRobinPool(n)), name = "node")
 
   def receive = {
     case command: Command => // execute the command

@@ -24,6 +24,12 @@ class Settings(system: ExtendedActorSystem) extends Extension {
   val homedir: String =
     system.settings.config getString "akkaftp.homedir"
 
+  val externalIp: String =
+    system.settings.config getString "akkaftp.external_ip"
+
+  val pasvPorts: Seq[Int] =
+    (system.settings.config getString "akkaftp.pasv_ports").split("\\,").filter(_.trim != "").map(_.trim.toInt)
+
   val restHostname: String =
     system.settings.config getString "akkaftp.rest.hostname"
 

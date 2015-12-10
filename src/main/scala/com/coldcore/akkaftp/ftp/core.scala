@@ -1,18 +1,19 @@
 package com.coldcore.akkaftp.ftp
 package core
 
-import java.net.InetSocketAddress
+import java.net.{NetworkInterface, InetSocketAddress}
 import java.nio.channels.Channel
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.{ActorRef, ActorSystem}
 import com.coldcore.akkaftp.Util
 import com.coldcore.akkaftp.ftp.command.{CommandFactory, DefaultCommandFactory}
-import com.coldcore.akkaftp.ftp.connection.ControlConnector
+import com.coldcore.akkaftp.ftp.connection.{DataConnector, ControlConnector}
 import com.coldcore.akkaftp.ftp.datafilter.{SessionKeeper, TrafficCounter, DataFilterFactory, DataFilterApplicator}
 import com.coldcore.akkaftp.ftp.executor.TaskExecutor
 import com.coldcore.akkaftp.ftp.filesystem.{DiskFileSystem, File, FileSystem}
 import com.coldcore.akkaftp.ftp.userstore.{PropsUserStore, UserStore}
+import scala.collection.JavaConverters._
 
 object Constants {
   val EoL = "\r\n"
@@ -28,17 +29,25 @@ class Boot(ftpstate: FtpState) {
     case "" => new InetSocketAddress(port)
     case _ => new InetSocketAddress(hostname, port)
   }
-  val ep = endpoint(ftpstate.host, ftpstate.port)
+  val ep = endpoint(ftpstate.hostname, ftpstate.port)
   val system = ftpstate.system
 
   val executor = system.actorOf(TaskExecutor.props(8), name = "task-executor") //todo configurable # of exec nodes
   system.actorOf(ControlConnector.props(ep, ftpstate, executor), name = "ctrl-connector")
   system.actorOf(TrafficCounter.props(ftpstate.registry), name = "traffic-counter")
   system.actorOf(SessionKeeper.props(ftpstate.registry), name = "session-keeper")
+
+  val dataConnector = system.actorOf(
+    DataConnector.props(ep.getHostName, ftpstate.dataConnectorVars.ports, ftpstate.dataConnectorVars.remoteIpResolv),
+    name = "data-connector")
+  ftpstate.attributes.set(DataConnector.attr, dataConnector)
 }
 
 /** Application dependencies, overwrite to add your own */
-class FtpState(val system: ActorSystem, val guest: Boolean, val usersdir: String) { //todo implicit ftpstate and system
+class FtpState(val system: ActorSystem,
+               val hostname: String, val port: Int,
+               val guest: Boolean, val usersdir: String,
+               val externalIp: String, pasvPorts: Seq[Int]) { //todo implicit ftpstate and system
   val registry = new Registry
   val fileSystem: FileSystem = new DiskFileSystem(usersdir)
   val userStore: UserStore = new PropsUserStore(Util.readProperties("/userstore.properties"))
@@ -46,12 +55,25 @@ class FtpState(val system: ActorSystem, val guest: Boolean, val usersdir: String
   val sessionFactory = new SessionFactory
   val dataFilterApplicator = new DataFilterApplicator
   val dataFilterFactory = new DataFilterFactory(fileSystem.endOfLine)
-
-  var host = ""
-  var port = 21
+  val dataConnectorVars = new DataConnectorVars(pasvPorts, externalIp)
 
   var suspended = false
   val attributes = new CustomAttributes
+}
+
+class DataConnectorVars(val ports: Seq[Int], val externalIp: String) {
+  val remoteIpResolv: String => String = { remoteip =>
+    val ipaddresses =
+      NetworkInterface.getNetworkInterfaces.asScala.flatMap { netint =>
+        netint.getInetAddresses.asScala.map(_.getAddress.map(_ & 0xff).mkString("."))
+      }
+    ipaddresses.collectFirst {
+      case addr if remoteip == addr => addr
+      case addr if addr.split("\\.").size == 4 && remoteip.startsWith(addr.split("\\.").take(2).mkString("", ".", ".")) => addr
+    } getOrElse {
+      externalIp
+    }
+  }
 }
 
 object ID {
@@ -93,7 +115,7 @@ case object StouDTM extends DataTransferMode // same as STOR, only send "250" re
 case object RetrDTM extends DataTransferMode // read data from file and send it to user
 case object ListDTM extends DataTransferMode // send directory content to user
 
-class Session(val ctrl: ActorRef, val ftpstate: FtpState) {
+class Session(val ctrl: ActorRef, val ftpstate: FtpState, val remote: InetSocketAddress) {
   val id = ID.next
 
   var username: Option[String] = None
@@ -135,7 +157,7 @@ class Session(val ctrl: ActorRef, val ftpstate: FtpState) {
 
 /** Overwrite this if you need to provide your own session implementation */
 class SessionFactory {
-  def session(ctrl: ActorRef, ftpstate: FtpState) = new Session(ctrl, ftpstate)
+  def session(ctrl: ActorRef, ftpstate: FtpState, remote: InetSocketAddress) = new Session(ctrl, ftpstate, remote)
 }
 
 object CommonActions {

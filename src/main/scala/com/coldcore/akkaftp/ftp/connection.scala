@@ -15,6 +15,8 @@ import com.coldcore.akkaftp.ftp.core._
 import com.coldcore.akkaftp.ftp.executor.TaskExecutor
 import scala.annotation.tailrec
 import akka.io.Tcp.NoAck
+import scala.concurrent.duration.DurationInt
+import akka.routing.{Broadcast, RoundRobinPool}
 
 object ControlConnector {
   def props(endpoint: InetSocketAddress, ftpstate: FtpState, executor: ActorRef): Props =
@@ -31,12 +33,7 @@ class ControlConnector(endpoint: InetSocketAddress, ftpstate: FtpState, executor
       sender ! Tcp.Register(context.actorOf(ControlConnection.props(remote, sender, ftpstate, executor), name = "conn-"+ID.next))
   }
 
-  override def supervisorStrategy: SupervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 0) {
-      case _ => // bad
-        log.debug("Closing connection (error)") // error is printed by the connection itself
-        SupervisorStrategy.Stop
-    }
+  override def supervisorStrategy: SupervisorStrategy = SupervisorStrategy.stoppingStrategy
 }
 
 object ControlConnection { //todo inactive timeout
@@ -67,7 +64,7 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
     }
   }
 
-  val session = ftpstate.sessionFactory.session(self, ftpstate)
+  val session = ftpstate.sessionFactory.session(self, ftpstate, remote)
   val buffer = new Buffer
   var executing: Option[Command] = None
 
@@ -165,8 +162,6 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
   }
 }
 
-//todo DataConnector PASV
-
 object DataConnectionInitiator {
   def props(endpoint: InetSocketAddress, session: Session): Props =
     Props(new DataConnectionInitiator(endpoint, session))
@@ -175,33 +170,31 @@ object DataConnectionInitiator {
 class DataConnectionInitiator(endpoint: InetSocketAddress, session: Session) extends Actor with ActorLogging {
   IO(Tcp)(context.system) ! Tcp.Connect(endpoint)
 
-  var remote: InetSocketAddress = _
-
   def fail() {
     session.ctrl ! DataConnection.Failed // notify the control connection
     DataConnection.resetSession(session)
-    context.stop(self)
   }
 
   def receive = {
     case Tcp.Connected(remote, _) => // connected
       log.debug("Connected to remote address {}", remote)
-      sender ! Tcp.Register(context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next))
-      this.remote = remote
+      val x = context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next)
+      sender ! Tcp.Register(x)
+      x ! DataConnection.StartTransfer
 
-    case DataConnection.Stopped => // data connection stopped successfully
+    case DataConnection.Stopped => // data connection stopped
       context.stop(self)
 
     case Tcp.CommandFailed(_: Tcp.Connect) => // cannot connect
       log.debug("Connection to remote endpoint {} failed", endpoint.getHostName+":"+endpoint.getPort)
       fail()
+      context.stop(self)
   }
 
   override def supervisorStrategy: SupervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 0) {
       case _ => // bad
-        log.debug("Closing connection to remote address {} (error)", remote) // error is printed by the connection itself
-        fail()
+        context.stop(self)
         SupervisorStrategy.Stop
     }
 }
@@ -212,6 +205,7 @@ object DataConnection { //todo inactive timeout
 
   case object Stopped
   case object Abort
+  case object StartTransfer
 
   sealed trait ReportState
   case object Success extends ReportState
@@ -220,7 +214,6 @@ object DataConnection { //todo inactive timeout
 
   def resetSession(session: Session) {
     session.dataConnection = None
-    session.dataTransferChannel.foreach(_.safeClose())
     session.dataTransferChannel = None
   }
 }
@@ -241,16 +234,6 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
   var wbc: WritableByteChannel = _
   var transferredBytes = 0L
 
-  val defReceive: Actor.Receive = {
-    case Terminated(`connection`) => // bad
-      log.debug("Connection for remote address {} died", remote)
-      close()
-
-    case Tcp.CommandFailed(_) => // bad
-      log.debug("Connection for remote address {} failed", remote)
-      close()
-  }
-
   val readReceive: Actor.Receive = {
     case Tcp.Received(data) => // read data from the user
       //log.debug("{} ---> {} bytes", remote, data.size)
@@ -269,8 +252,7 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
     case _: Tcp.ConnectionClosed => // good
       if (report.isEmpty) report = Some(Success)
       log.debug("{} ---> {} bytes", remote, transferredBytes)
-      log.debug("Connection for remote address {} closed", remote)
-      close()
+      context.stop(self)
   }
 
   val writeReceive: Actor.Receive = {
@@ -298,27 +280,141 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
 
     case _: Tcp.ConnectionClosed => // good
       log.debug("{} <--- {} bytes", remote, transferredBytes)
-      log.debug("Connection for remote address {} closed", remote)
-      close()
+      context.stop(self)
   }
 
-  session.dataTransferMode.get match {
-    case StorDTM | StouDTM => // write from the channel source to a client
-      context.become(readReceive orElse defReceive)
-      wbc = session.dataTransferChannel.get.asInstanceOf[WritableByteChannel]
-    case RetrDTM | ListDTM => // read from a client into the channel dest
-      context.become(writeReceive orElse defReceive)
-      rbc = session.dataTransferChannel.get.asInstanceOf[ReadableByteChannel]
-      self ! Write
+  val defReceive: Actor.Receive = {
+    case Terminated(`connection`) => // bad
+      log.debug("Connection for remote address {} died", remote)
+      context.stop(self)
+
+    case Tcp.CommandFailed(_) => // bad
+      log.debug("Connection for remote address {} failed", remote)
+      context.stop(self)
+
+    case StartTransfer => // start transfer now
+      session.dataTransferMode.get match {
+        case StorDTM | StouDTM => // write from the channel source to a client
+          context.become(readReceive orElse defReceive)
+          wbc = session.dataTransferChannel.get.asInstanceOf[WritableByteChannel]
+        case RetrDTM | ListDTM => // read from a client into the channel dest
+          context.become(writeReceive orElse defReceive)
+          rbc = session.dataTransferChannel.get.asInstanceOf[ReadableByteChannel]
+          self ! Write
+      }
   }
 
-  def close() {
+  override def postStop() {
     session.ctrl ! report.getOrElse(Failed) // notify the control connection
     log.debug("Closing connection to remote address {}", remote)
     resetSession(session)
-    context.stop(self)
     context.parent ! Stopped
+    super.postStop()
   }
 
   def receive = defReceive
+}
+
+object DataConnector {
+  def props(hostname: String, ports: Seq[Int], ipresolv: String => String): Props =
+    Props(new DataConnector(hostname, ports, ipresolv))
+
+  case class Accept(session: Session)
+  case class Accepted(ipaddr:String, port: Int)
+  case object Rejected
+  case class Cancel(session: Session)
+
+  val attr = "DataConnector.actorRef"
+}
+
+class DataConnector(hostname: String, ports: Seq[Int], ipresolv: String => String) extends Actor with ActorLogging {
+  import DataConnector._
+
+  val nodes = {
+    val pt = ports.iterator
+    context.actorOf(DataConnectorNode.props(hostname, pt).withRouter(RoundRobinPool(ports.size)), name = "node")
+  }
+
+  def receive = {
+    case Accept(session) => // accept a new connection
+      if (ports.isEmpty) {
+        DataConnection.resetSession(session)
+        sender ! Rejected
+      } else {
+        nodes ! DataConnectorNode.Reserve(session, attempt = 1, sender)
+      }
+
+    case DataConnectorNode.Fail(session, attempt, owner) => // node says no
+      if (attempt > ports.size*2) {
+        session.ctrl ! DataConnection.Failed // notify the control connection
+        DataConnection.resetSession(session)
+        owner ! Rejected
+      } else {
+        nodes ! DataConnectorNode.Reserve(session, attempt+1, owner)
+      }
+
+    case DataConnectorNode.Success(session, port, owner) => // node says yes
+      val ipaddr = ipresolv(session.remote.getAddress.getAddress.map(_ & 0xff).mkString("."))
+      owner ! Accepted(ipaddr, port)
+
+    case x @ Cancel(session) => // cancel reservation for a connection if any
+      nodes ! Broadcast(x)
+  }
+}
+
+object DataConnectorNode {
+  def props(hostname: String, pt: Iterator[Int]): Props =
+    Props(new DataConnectorNode(hostname, pt))
+
+  case class Reserve(session: Session, attempt: Int, owner: ActorRef)
+  case class Fail(session: Session, attempt: Int, owner: ActorRef)
+  case class Success(session: Session, port: Int, owner: ActorRef)
+}
+
+class DataConnectorNode(hostname: String, pt: Iterator[Int]) extends Actor with ActorLogging {
+  import DataConnectorNode._
+  import context.dispatcher
+
+  val endpoint = new InetSocketAddress(hostname, pt.next)
+  IO(Tcp)(context.system) ! Tcp.Bind(self, endpoint)
+  log.info(s"Bound data connector to ${endpoint.getHostName}:${endpoint.getPort}")
+
+  val reserved = new collection.mutable.HashMap[String,Session] // (remote host, session)
+  val timeoutSch = "DataConnectorNode.timeoutSch"
+
+  def fail(session: Session) {
+    session.ctrl ! DataConnection.Failed // notify the control connection
+    DataConnection.resetSession(session)
+  }
+
+  def receive = {
+    case Tcp.Connected(remote, _) if reserved.contains(remote.getHostName) => // connected
+      log.debug("Remote address {} connected", remote)
+      val session = reserved.remove(remote.getHostName).get
+      session.attributes.get[Cancellable](timeoutSch).foreach(_.cancel())
+      sender ! Tcp.Register(context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next))
+
+    case Tcp.Connected(remote, _) => // connected
+      log.debug("Unrecognised remote address {} connected", remote)
+      sender ! Tcp.Close //todo will this work?
+
+    case Reserve(session, attempt, owner) if reserved.contains(session.remote.getHostName) => // spot already taken
+      sender ! Fail(session, attempt, owner)
+
+    case Reserve(session, _, owner) => // reserve a spot for a connection
+      reserved.put(session.remote.getHostName, session)
+      val x = context.system.scheduler.scheduleOnce(15.seconds, self, DataConnector.Cancel(session))
+      session.attributes.set(timeoutSch, x)
+      sender ! Success(session, endpoint.getPort, owner)
+
+    case DataConnector.Cancel(session) if reserved.contains(session.remote.getHostName) => // cancel reservation
+      reserved.remove(session.remote.getHostName)
+      session.attributes.get[Cancellable](timeoutSch).foreach(_.cancel())
+      fail(session)
+
+    case Broadcast(x) =>
+      self ! x
+  }
+
+  override def supervisorStrategy: SupervisorStrategy = SupervisorStrategy.stoppingStrategy
 }
