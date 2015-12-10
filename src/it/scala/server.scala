@@ -28,7 +28,7 @@ class CustomLauncher extends Launcher {
   var system: ActorSystem = _
 
   override def createFtpState(system: ActorSystem): FtpState = {
-    new CustomFtpState(system, hostname =  "", port = 2021, guest = true,
+    new CustomFtpState(system, hostname = "127.0.0.1", port = 2021, guest = true,
       usersdir = "ftp_home", externalIp = "127.0.0.1", pasvPorts = Seq(6001,6002,6003))
   }
 
@@ -39,7 +39,7 @@ class CustomLauncher extends Launcher {
 
 
   override def start() {
-    system = ActorSystem("it-system")
+    system = ActorSystem("it-server-system")
     ftpstate = createFtpState(system)
     startFtpService(system, ftpstate)
   }
