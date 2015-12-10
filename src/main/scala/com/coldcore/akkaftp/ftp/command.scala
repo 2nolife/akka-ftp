@@ -53,7 +53,6 @@ trait Interrupt {
 
 trait DataTransferOps {
   self: Command =>
-  val session: Session
 
   def openerNotSet: Option[Reply] =
     if (session.dataOpenerType.isDefined) None
@@ -61,13 +60,12 @@ trait DataTransferOps {
 
   def openerStart() {
     session.dataOpenerType match {
-      case Some(PasvDOT) => // PASV parameters active just once per data transfer
+      case Some(PasvDOT) => // PASV stored just once per data transfer
         session.dataOpenerType = None
-        session.dataConnection.foreach(_ ! DataConnection.StartTransfer)
       case Some(PortDOT) => // PORT activates data connection initiator
         val (system, ep) = (session.ftpstate.system, session.dataEndpoint.get)
         system.actorOf(DataConnectionInitiator.props(ep, session), name = "data-initiator-"+ID.next)
-      case None => throw new IllegalStateException(s"No data opener type set")
+      case None => throw new IllegalStateException(s"No data opener type set in session #${session.id}")
     }
   }
 
@@ -79,7 +77,6 @@ trait DataTransferOps {
 
 trait FileSystemOps {
   self: Command =>
-  val session: Session
 
   def handleFsError(e: FileSystemException): Reply = {
     val m = e.getMessage
@@ -160,6 +157,8 @@ class DefaultCommandFactory extends CommandFactory {
       case "TVFS" => TvfsCommand(session)
       case "MDTM" => MdtmCommand(param, session)
       case "SIZE" => SizeCommand(param, session)
+      case "MLSD" => MlsdCommand(param, session)
+      case "MLST" => MlstCommand(param, session)
       case _ => null
     })
 
@@ -631,7 +630,6 @@ case class QuitCommand(session: Session) extends Command with LoggedIn with Inte
   }
 }
 
-
 // todo FEAT, Help, Opts, Site, SiteHelpCommand
 
 case class EprtCommand(param: String, session: Session) extends Command with LoggedIn {
@@ -687,7 +685,7 @@ case class MdtmCommand(param: String, session: Session) extends Command with Log
         either.left.getOrElse {
           either.right.get.listFile.collect {
             case file if !file.directory =>
-              val sdf = new SimpleDateFormat("yyyyMMddHHmmss")
+              val sdf = new SimpleDateFormat("yyyyMMddHHmmss", Locale.ENGLISH)
               sdf.setTimeZone(TimeZone.getTimeZone("GMT"))
               Reply(213, sdf.format(file.modified))
           } getOrElse {
@@ -717,4 +715,89 @@ case class SizeCommand(param: String, session: Session) extends Command with Log
     }
 }
 
-// todo Mlsd, Mlst
+abstract class MldsMlstCommand(param: String, val session: Session) extends Command with LoggedIn with DataTransferOps with FileSystemOps {
+  val sdf = new SimpleDateFormat("yyyyMMddHHmmss", Locale.ENGLISH)
+
+  def pathFacts(lf: ListingFile, cdir: String): Map[String,String] = {
+    val facts1 =
+      if (lf.directory) Map(if (lf.path == cdir) ("type" -> "cdir") else ("type" -> "dir"))
+      else Map("type" -> "file", "size" -> lf.size.toString)
+    val facts2 = Map("modify" -> sdf.format(lf.modified), "perm" -> lf.mlsxFacts)
+    facts1 ++ facts2
+  }
+
+  def serialize(pfacts: Map[String,String]): String = {
+    val selected = "type" :: "size" :: "modify" :: "perm" :: Nil
+    (List.empty[Option[String]] /: selected) { (a,b) => pfacts.get(b).map(x => s"$b=$x;") :: a }.flatten.mkString
+  }
+
+  def paramAsFile: Either[Reply,File] =
+    try { Right {
+      if (param.isEmpty) session.currentDir else session.ftpstate.fileSystem.file(param, session)
+    }} catch { case e: FileSystemException => Left(handleFsError(e)) }
+}
+
+case class MlsdCommand(param: String, override val session: Session) extends MldsMlstCommand(param, session) {
+  override def exec: Reply =
+    paramAsFile match {
+      case Right(listdir) =>
+        if (listdir.exists) {
+          val str = listDir(listdir)
+          val rbc = Channels.newChannel(new ByteArrayInputStream(str.getBytes(UTF8)))
+          session.dataTransferMode = Some(ListDTM)
+          session.dataTransferChannel = Some(rbc)
+          openerNotSet.getOrElse {
+            openerStart()
+            Reply(150, s"Opening A mode data connection for MLSD ${listdir.path}.")
+          }
+        } else {
+          Reply(450, s"Path not foubd.")
+        }
+      case Left(reply) =>
+        reply
+    }
+
+  def listDir(cdir: File): String = {
+    val facts1 = // parent dir if present
+      cdir.parent.map { pdir =>
+        val lf = pdir.listFile.get
+        val pfacts = pathFacts(lf, pdir.path) + ("type" -> "pdir")
+        serialize(pfacts)+" "+pdir.path+EoL
+      } getOrElse {
+        ""
+      }
+    val clf = cdir.listFile.get
+    val facts2 = { // current dir
+      val pfacts = pathFacts(clf, cdir.path)
+      serialize(pfacts)+" "+cdir.path+EoL
+    }
+    val facts3 = // listing
+      for (lf <- cdir.listFiles) yield {
+        val pfacts = pathFacts(lf, cdir.path)
+        serialize(pfacts)+" "+lf.path+EoL
+      }.mkString
+    facts1+facts2+facts3
+  }
+}
+
+case class MlstCommand(param: String, override val session: Session) extends MldsMlstCommand(param, session) {
+  override def exec: Reply =
+    paramAsFile match {
+      case Right(file) =>
+        if (file.exists) {
+          val lf = file.listFile.get
+          val facts = pathFacts(lf, session.currentDir.path)
+          val str = serialize(facts)+" "+lf.path+EoL
+          val content =
+            s"""|Listing ${file.path}$EoL
+                |$str
+                |End
+             """.stripMargin.trim
+          Reply(250, content)
+        } else {
+          Reply(450, s"Path not foubd.")
+        }
+      case Left(reply) =>
+        reply
+    }
+}
