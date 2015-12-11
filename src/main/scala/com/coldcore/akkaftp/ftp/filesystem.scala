@@ -82,7 +82,7 @@ class JFile(val target: jFile, session: Session, val vpath: Option[String] = Non
   override def listFile: Option[ListingFile] =
     if (!target.exists) None
     else Some(new ListingFile("ftp", target.isDirectory, "rwxrwxrwx", if (target.isDirectory) "cdeflp" else "adfrw",
-              target.length, target.getName, target.getAbsolutePath, new Date(target.lastModified)))
+              target.length, target.getName, path, new Date(target.lastModified)))
 
   override def listFiles: Seq[ListingFile] =
     if (!target.exists) Seq.empty[ListingFile]

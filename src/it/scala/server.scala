@@ -1,11 +1,14 @@
 package com.coldcore.akkaftp.it
 package server
 
+import java.util.Date
+
 import com.coldcore.akkaftp.Launcher
 import akka.actor.ActorSystem
 import com.coldcore.akkaftp.ftp.core.{Session, FtpState}
 import com.coldcore.akkaftp.ftp.filesystem.{ListingFile, File, FileSystem}
 import java.nio.channels.{Channels, WritableByteChannel, ReadableByteChannel}
+import com.coldcore.akkaftp.ftp.userstore.UserStore
 import org.scalatest.Matchers
 
 import scala.concurrent.duration._
@@ -21,42 +24,55 @@ class CustomFtpState(override val system: ActorSystem,
                      override val pasvPorts: Seq[Int]) extends
   FtpState(system, hostname, port, guest, usersdir, externalIp, pasvPorts) {
   override val fileSystem = new MemoryFileSystem
+  override val userStore = new DummyUserStore
 }
 
 class MemoryFileSystem extends FileSystem {
   override def logout(session: Session) {}
 
   override def login(session: Session) {
-    val file = new MemoryFile("/")
-    session.homeDir = file
-    session.currentDir = file
+    val dir = new MemoryFile("/", this) { fexists = true; fdirectory = true }
+    allFiles = allFiles + ("/" -> dir)
+    session.homeDir = dir
+    session.currentDir = dir
   }
 
   var allFiles = Map.empty[String,MemoryFile] // (path, file)
   override def file(path: String, session: Session): File = {
     allFiles.getOrElse(path, {
-      val file = new MemoryFile(path)
+      val file = new MemoryFile(path, this)
       allFiles = allFiles + (path -> file)
       file
     })
   }
 }
 
-class MemoryFile(val path: String) extends File {
+class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
   private[server] var out: ByteArrayOutputStream = _
-  private[server] var fdata: Option[Array[Byte]] = _
+  private[server] var fdata = Array.empty[Byte]
   private[server] var fexists = false
   private[server] var fdirectory = false
+  private[server] var fcreated = new Date
 
-  def data: Option[Array[Byte]] = {
+  def data: Array[Byte] = {
     if (out != null) { // flush data that server wrote to the file
-      fdata = Some(out.toByteArray)
+      fdata = out.toByteArray
       out = null
     }
     fdata
   }
 
-  override def parent: Option[File] = ???
+  override def parent: Option[File] = {
+    if (path == "/") None
+    else {
+      val x = {
+        val a = path.reverse.dropWhile('/'!=).drop(1).reverse
+        if (a.isEmpty) "/" else a
+      }
+      fs.allFiles.get(x)
+    }
+  }
+
   override def rename(dst: File): Unit = ???
   override def mkdir(): Unit = ???
   override def delete(): Unit = ???
@@ -67,12 +83,20 @@ class MemoryFile(val path: String) extends File {
   }
 
   override def read(position: Long): ReadableByteChannel = {
-    Channels.newChannel(new ByteArrayInputStream(data.get))
+    Channels.newChannel(new ByteArrayInputStream(data))
   }
 
   override def exists: Boolean = fexists
   override def listFiles: Seq[ListingFile] = ???
-  override def listFile: Option[ListingFile] = ???
+
+  override def listFile: Option[ListingFile] =
+    if (!fexists) None
+    else Some(new ListingFile("ftp", fdirectory, "rwxrwxrwx", if (fdirectory) "cdeflp" else "adfrw",
+      data.size, path.split("/").last, path, fcreated))
+}
+
+class DummyUserStore extends UserStore {
+  override def login(username: String, password: String): Boolean = username == password
 }
 
 class CustomLauncher extends Launcher {
@@ -87,19 +111,21 @@ class FtpServer extends Matchers {
   private val launcher = new CustomLauncher
   var ftpstate: FtpState = _
 
-  def allFiles = ftpstate.fileSystem.asInstanceOf[MemoryFileSystem].allFiles
+  private lazy val fs = ftpstate.fileSystem.asInstanceOf[MemoryFileSystem]
+
+  def allFiles = fs.allFiles
 
   def fileData(path: String): Array[Byte] = {
     allFiles should contain key path
-    allFiles.get(path).get.data.get
+    allFiles(path).data
   }
 
   def addFile(path: String, body: Array[Byte]) = {
-    val file = new MemoryFile(path) { fexists = true; fdirectory = false; fdata = Some(body) }
+    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = false; fdata = body }
     ftpstate.fileSystem.asInstanceOf[MemoryFileSystem].allFiles = allFiles + (path -> file)
   }
   def addDirectory(path: String) = {
-    val file = new MemoryFile(path) { fexists = true; fdirectory = true }
+    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true }
     ftpstate.fileSystem.asInstanceOf[MemoryFileSystem].allFiles = allFiles + (path -> file)
   }
 

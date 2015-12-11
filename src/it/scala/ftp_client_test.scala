@@ -37,11 +37,11 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
 
   it should "send a NOOP coomand and receive a 200 OK reply (with delay)" in {
     client --> "NOOP"
-    delay(100 milliseconds)
+    delay(10 milliseconds)
     client.replies should have size 2
     client.replies.head should matchPattern { case Reply(200, "OK" | "OK ") => }
     client --> "NOOP foo"
-    delay(100 milliseconds)
+    delay(10 milliseconds)
     client.replies should have size 3
     client.replies.head shouldBe Reply(200, "OK foo")
   }
@@ -84,7 +84,4 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
     n shouldBe 6
     data should be ("qwerty".getBytes)
   }
-
-  //todo read PORT
-  //todo read PASV
 }

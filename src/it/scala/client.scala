@@ -1,24 +1,25 @@
 package com.coldcore.akkaftp.it
 package client
 
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.net.InetSocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.{Channels, ReadableByteChannel}
 
 import akka.actor._
-import akka.io.{Tcp, IO}
-import akka.util.{Timeout, CompactByteString, ByteString}
-import com.coldcore.akkaftp.ftp.core.FtpState
-import com.coldcore.akkaftp.ftp.core.Constants._
+import akka.io.{IO, Tcp}
 import akka.pattern.ask
-import scala.concurrent.{Future, ExecutionContext, Await}
-import scala.concurrent.duration._
+import akka.util.{ByteString, CompactByteString, Timeout}
+import com.coldcore.akkaftp.ftp.core.Constants._
+import com.coldcore.akkaftp.ftp.core.FtpState
+import com.coldcore.akkaftp.it.Utils._
 import org.scalatest.Matchers
-import Utils._
-import java.nio.channels.{Channels, ReadableByteChannel}
-import java.nio.ByteBuffer
-import java.io.{ByteArrayInputStream, InputStream, ByteArrayOutputStream}
+
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 class FtpClient(val ftpstate: FtpState) extends Matchers {
-  import ExecutionContext.Implicits.global
+  import scala.concurrent.ExecutionContext.Implicits.global
 
   private var system: ActorSystem = _
   private[client] var ctrl: ActorRef = _
@@ -27,6 +28,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   implicit val timeout: Timeout = 1 second
 
   var replies: List[Reply] = _
+  var connected = false
 
   def connect() {
     system = ActorSystem("it-client-"+System.currentTimeMillis)
@@ -50,9 +52,15 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     Await.result(x, timeout.duration)
   }
 
-  def anonymousLogin() {
-    ((this <-- "USER anonymous") code) should be (331)
-    ((this <-- "PASS anon@anon") code) should be (230)
+  def anonymousLogin() = login("anonymous", "anon@anon")
+
+  def login(username: String, password: String) {
+    ((this <-- s"USER $username") code) should be (331)
+    ((this <-- s"PASS $password") code) should be (230)
+  }
+
+  def cwd(dir: String) {
+    ((this <-- s"CWD $dir") code) should be (450)
   }
 
   def portMode(port: Int) {
@@ -140,7 +148,7 @@ object CtrlConnection {
 }
 
 class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: FtpClient) extends Actor with ActorLogging {
-  import CtrlConnection._
+  import com.coldcore.akkaftp.it.client.CtrlConnection._
   implicit def String2ByteString(x: String): ByteString = CompactByteString(x)
 
   case class Extracted(reply: Reply)
@@ -163,6 +171,7 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
 
   context.watch(connection)
   client.ctrl = self
+  client.connected = true
 
   def receive = {
     case Tcp.Received(data) => // server sends data
@@ -198,6 +207,11 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
       log.debug("Connection for remote address {} failed", remote)
       context.stop(self)
   }
+
+  override def postStop() = {
+    client.connected = false
+    super.postStop()
+  }
 }
 
 object Reply {
@@ -228,7 +242,7 @@ object DataConnector {
 }
 
 class DataConnector(client: FtpClient) extends Actor with ActorLogging {
-  import DataConnector._
+  import com.coldcore.akkaftp.it.client.DataConnector._
 
   var endpoint: InetSocketAddress = _
   var receiver: ActorRef = _

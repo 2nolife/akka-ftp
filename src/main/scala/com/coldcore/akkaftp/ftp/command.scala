@@ -424,8 +424,14 @@ case class CwdCommand(param: String, session: Session) extends Command with Logg
         Reply(250, "CWD command successful.")
       case path =>
         try {
-          session.currentDir = session.ftpstate.fileSystem.file(path, session)
-          Reply(250, "Directory changed.")
+          val apath = filenamePath(path)
+          val dir = session.ftpstate.fileSystem.file(apath, session)
+          if (dir.exists && dir.listFile.get.directory) {
+            session.currentDir = dir
+            Reply(250, "Directory changed.")
+          } else {
+            Reply(450, "Directory not found.")
+          }
         } catch { case e: FileSystemException => handleFsError(e) }
     }
 }
@@ -521,7 +527,7 @@ case class RestCommand(param: String, session: Session) extends Command with Log
 
 case class CdupCommand(session: Session) extends Command with LoggedIn {
   override def exec: Reply = {
-    session.currentDir.parent.map(session.currentDir = _)
+    session.currentDir.parent.foreach(session.currentDir = _)
     Reply(250, "Directory changed.")
   }
 }
