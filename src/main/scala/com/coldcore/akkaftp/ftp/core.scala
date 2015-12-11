@@ -78,7 +78,7 @@ class DataConnectorVars(val ports: Seq[Int], val externalIp: String, boundHostna
   }
 }
 
-object ID { //todo rewrite as Iterator.next
+object ID {
   private val along = new AtomicLong(0)
   def next: Long = along.addAndGet(1)
 }

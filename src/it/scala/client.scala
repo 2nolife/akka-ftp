@@ -5,46 +5,113 @@ import java.net.InetSocketAddress
 
 import akka.actor._
 import akka.io.{Tcp, IO}
-import akka.util.{CompactByteString, ByteString}
+import akka.util.{Timeout, CompactByteString, ByteString}
 import com.coldcore.akkaftp.ftp.core.FtpState
 import com.coldcore.akkaftp.ftp.core.Constants._
 import akka.pattern.ask
-import scala.concurrent.{ExecutionContext, Await}
+import scala.concurrent.{Future, ExecutionContext, Await}
 import scala.concurrent.duration._
+import org.scalatest.Matchers
+import Utils._
+import java.nio.channels.{Channels, ReadableByteChannel}
+import java.nio.ByteBuffer
+import java.io.{ByteArrayInputStream, InputStream, ByteArrayOutputStream}
 
-class FtpClient(ftpstate: FtpState)  {
+class FtpClient(val ftpstate: FtpState) extends Matchers {
   import ExecutionContext.Implicits.global
 
   private var system: ActorSystem = _
   private[client] var ctrl: ActorRef = _
+  private var portOrPasv: Option[PortOrPasvMode] = None
+  private var dataref: ActorRef = _
+  implicit val timeout: Timeout = 1 second
+
   var replies: List[Reply] = _
 
   def connect() {
-    system = ActorSystem("it-client-system-"+System.currentTimeMillis)
-    system.actorOf(CtrlConnector.props(new InetSocketAddress(ftpstate.hostname, ftpstate.port), this))
+    system = ActorSystem("it-client-"+System.currentTimeMillis)
+    system.actorOf(CtrlConnector.props(this), name = "ctrl")
     replies = List.empty[Reply]
+    delay(1 second)
   }
 
   def disconnect() = system.shutdown()
 
+  /** send a command to the server (fire and forget) */
   def -->(text: String) = ctrl ! CtrlConnection.Send(text)
 
-  def <->(text: String): Reply = {
-    val x = ctrl.ask(CtrlConnection.Send(text))(1 second).map {
+  /** send a command to the server and get the reply */
+  def <--(text: String): Reply = {
+    val x = (ctrl ? CtrlConnection.Send(text)).map {
       case reply @ Reply(_, _) => reply
     } recover {
       case _ => throw new IllegalStateException("Failed to receive server reply")
     }
-    Await.result(x, 1 second)
+    Await.result(x, timeout.duration)
+  }
+
+  def anonymousLogin() {
+    ((this <-- "USER anonymous") code) should be (331)
+    ((this <-- "PASS anon@anon") code) should be (230)
+  }
+
+  def portMode(port: Int) {
+    portOrPasv = None
+    val i = port/256
+    val pstr = i+","+(port-i*256)
+    val ipcs = ftpstate.hostname.replaceAll("\\.", ",")
+    ((this <-- s"PORT $ipcs,$pstr") code) should be (200)
+    portOrPasv = Some(PortMode(port))
+  }
+
+  def pasvMode() {
+    portOrPasv = None
+    val reply = this <-- "PASV"
+    reply.code shouldBe 227
+    val port = reply.text.dropWhile('('!=).drop(1).takeWhile(')'!=).split(",") match {
+      case Array(_, _, _, _, p1, p2) => p1.toInt*256+p2.toInt
+    }
+    portOrPasv = Some(PasvMode(port))
+  }
+
+  private val dconSuccess = (x: Future[Any]) =>
+    x.map {
+      case DataConnector.Success(n, bytes) => (n, bytes)
+    } recover {
+      case _ => throw new IllegalStateException("Failed to send data to server")
+    }
+
+  /** send a file to the server and get the data sent */
+  def <==(filename: String, data: Array[Byte]): (Long, Array[Byte]) = {
+    val in = new ByteArrayInputStream(data)
+    val ref = system.actorOf(DataConnector.props(this), name = "data")
+    val x = dconSuccess(ref ? DataConnector.Send(Channels.newChannel(in), portOrPasv.get))
+    (this <-- s"STOR $filename").code shouldBe 150
+    val t = Await.result(x, timeout.duration)
+    delay(10 milliseconds)
+    replies.head.code shouldBe 226
+    t
+  }
+
+  /** retrieve a file from the server and get the data retrieved */
+  def <==(filename: String): (Long, Array[Byte]) = {
+    val ref = system.actorOf(DataConnector.props(this), name = "data")
+    val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
+    (this <-- s"RETR $filename").code shouldBe 150
+    val t = Await.result(x, timeout.duration)
+    delay(10 milliseconds)
+    replies.head.code shouldBe 226
+    t
   }
 }
 
 object CtrlConnector {
-  def props(endpoint: InetSocketAddress, client: FtpClient): Props =
-    Props(new CtrlConnector(endpoint, client))
+  def props(client: FtpClient): Props =
+    Props(new CtrlConnector(client))
 }
 
-class CtrlConnector(endpoint: InetSocketAddress, client: FtpClient) extends Actor with ActorLogging {
+class CtrlConnector(client: FtpClient) extends Actor with ActorLogging {
+  val endpoint = new InetSocketAddress(client.ftpstate.hostname, client.ftpstate.port)
   IO(Tcp)(context.system) ! Tcp.Connect(endpoint)
 
   def receive = {
@@ -109,7 +176,7 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
       }
 
     case Extracted(reply) =>
-      client.replies = reply +: client.replies
+      client.replies = reply :: client.replies
       receiver.foreach(_ ! reply)
       receiver = None
       self ! Tcp.Received("") // loop to process the next reply from the buffer
@@ -142,3 +209,125 @@ object Reply {
 }
 
 case class Reply(code: Int, text: String)
+
+sealed trait SendOrReceiveData
+case object SendData extends SendOrReceiveData
+case object ReceiveData extends SendOrReceiveData
+
+sealed trait PortOrPasvMode
+case class PortMode(port: Int) extends PortOrPasvMode
+case class PasvMode(port: Int) extends PortOrPasvMode
+
+object DataConnector {
+  def props(client: FtpClient): Props =
+    Props(new DataConnector(client))
+
+  case class Send(rbc: ReadableByteChannel, portOrPasv: PortOrPasvMode)
+  case class Receive(portOrPasv: PortOrPasvMode)
+  case class Success(n: Long, bytes: Array[Byte])
+}
+
+class DataConnector(client: FtpClient) extends Actor with ActorLogging {
+  import DataConnector._
+
+  var endpoint: InetSocketAddress = _
+  var receiver: ActorRef = _
+  var sendOrReceive: SendOrReceiveData = _
+  var channel: Option[ReadableByteChannel] = None
+
+  def open(portOrPasv: PortOrPasvMode) {
+    portOrPasv match {
+      case PasvMode(port) =>
+        endpoint = new InetSocketAddress(client.ftpstate.hostname, port)
+        IO(Tcp)(context.system) ! Tcp.Connect(endpoint)
+      case PortMode(port) =>
+        endpoint = new InetSocketAddress(client.ftpstate.hostname, port)
+        IO(Tcp)(context.system) ! Tcp.Bind(self, endpoint)
+        //log.info(s"Data listener bound to ${endpoint.getHostName}:${endpoint.getPort}")
+    }
+  }
+
+  def receive = {
+    case Send(rbc, portOrPasv) =>
+      receiver = sender
+      sendOrReceive = SendData
+      channel = Some(rbc)
+      open(portOrPasv)
+
+    case Receive(portOrPasv) =>
+      receiver = sender
+      sendOrReceive = ReceiveData
+      open(portOrPasv)
+
+    case Tcp.Connected(remote, _) =>
+      log.debug("Connected to remote address {}", remote)
+      val ref = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
+      sender ! Tcp.Register(ref)
+      channel.foreach(ref !) //send data to the server
+
+    case Tcp.CommandFailed(_: Tcp.Connect) => // cannot connect
+      log.debug("Connection to remote endpoint {} failed", endpoint.getHostName+":"+endpoint.getPort)
+      context.stop(self)
+
+    case x @ Success(_, _) => // data transferred
+      receiver ! x
+      context.stop(self) 
+  }
+
+  override def supervisorStrategy: SupervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 0) {
+      case _ =>
+        context.stop(self)
+        SupervisorStrategy.Stop
+    }
+}
+
+object DataConnection {
+  def props(remote: InetSocketAddress, connection: ActorRef, sendOrReceive: SendOrReceiveData): Props =
+    Props(new DataConnection(remote, connection, sendOrReceive))
+}
+
+class DataConnection(remote: InetSocketAddress, connection: ActorRef, sendOrReceive: SendOrReceiveData) extends Actor with ActorLogging {
+  implicit def Buffer2ByteString(x: ByteBuffer): ByteString = CompactByteString(x)
+
+  context.watch(connection)
+
+  var transferredBytes = 0L
+  val memstream = new ByteArrayOutputStream
+  val memchannel = Channels.newChannel(memstream)
+  val buffer = ByteBuffer.allocate(1024*8) // 8 KB buffer
+
+  def receive = {
+    case Tcp.Received(data) => // the server sends data
+      val b = data.asByteBuffer
+      val i = memchannel.write(b)
+      transferredBytes += i
+
+    case rbc: ReadableByteChannel => // send data to the server
+      buffer.clear()
+      val i = rbc.read(buffer)
+      buffer.flip()
+      if (i != -1) {
+        connection ! Tcp.Write(buffer)
+        transferredBytes += i
+        self ! rbc
+      } else {
+        connection ! Tcp.Close
+      }
+
+    case _: Tcp.ConnectionClosed =>
+      log.debug("{} <--> {} bytes", remote, transferredBytes)
+      log.debug("Connection for remote address {} closed", remote)
+      context.parent ! DataConnector.Success(transferredBytes, memstream.toByteArray)
+      context.stop(self)
+
+    case Terminated(`connection`) =>
+      log.debug("Connection for remote address {} died", remote)
+      context.stop(self)
+
+    case Tcp.CommandFailed(_) =>
+      log.debug("Connection for remote address {} failed", remote)
+      context.stop(self)
+  }
+
+}

@@ -226,7 +226,6 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
 
   context.watch(connection)
   session.dataConnection = Some(self)
-  log.debug(s"Data connection attached to session #${session.id}")
 
   val buffer = ByteBuffer.allocate(1024*8) // 8 KB buffer
   var report: Option[ReportState] = None

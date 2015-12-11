@@ -2,37 +2,35 @@ package com.coldcore.akkaftp.it
 package test
 
 import org.scalatest._
-import com.coldcore.akkaftp.it.server.CustomLauncher
+import com.coldcore.akkaftp.it.server.{MemoryFileSystem, FtpServer}
 import com.coldcore.akkaftp.it.client.{Reply, FtpClient}
 import scala.concurrent.duration._
+import Utils._
 
 /** Ensure the FtpClient is working as expected */
 class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter with Matchers {
 
-  val launcher = new CustomLauncher
-  lazy val client = new FtpClient(launcher.ftpstate)
-
-  def delay(x: FiniteDuration) = Thread.sleep(x.toMillis)
+  val server = new FtpServer
+  lazy val client = new FtpClient(server.ftpstate)
+  val port = 6004
 
   override protected def beforeAll() {
-    launcher.start()
-    delay(1 second)
+    server.start()
   }
 
   override protected def afterAll() {
-    launcher.stop()
+    server.stop()
   }
 
   before {
     client.connect()
-    delay(1 second)
   }
 
   after {
     client.disconnect()
   }
 
-  it should "receive a positive reply" in {
+  it should "receive a positive welcome reply" in {
     client.replies should have size 1
     client.replies.head should matchPattern { case Reply(220, _) => }
   }
@@ -49,8 +47,44 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
   }
 
   it should "send a NOOP coomand and receive a 200 OK reply (no delay)" in {
-    (client <-> "NOOP") should matchPattern { case Reply(200, "OK" | "OK ") => }
-    (client <-> "NOOP foo") shouldBe Reply(200, "OK foo")
+    (client <-- "NOOP") should matchPattern { case Reply(200, "OK" | "OK ") => }
+    (client <-- "NOOP foo") shouldBe Reply(200, "OK foo")
   }
 
+  it should "STOR a file with PORT" in {
+    client.anonymousLogin()
+    client.portMode(port)
+    val (n, _) = client <== ("abc.txt", "abc".getBytes)
+    n shouldBe 3
+    server.fileData("/abc.txt") should be ("abc".getBytes)
+  }
+
+  it should "STOR a file with PASV" in {
+    client.anonymousLogin()
+    client.pasvMode()
+    val (n, _) = client <== ("cdef.txt", "cdef".getBytes)
+    n shouldBe 4
+    server.fileData("/cdef.txt") should be ("cdef".getBytes)
+  }
+
+  it should "RERT a file with PORT" in {
+    server.addFile("/qwer.txt", "qwer".getBytes)
+    client.anonymousLogin()
+    client.portMode(port)
+    val (n, data) = client <== "qwer.txt"
+    n shouldBe 4
+    data should be ("qwer".getBytes)
+  }
+
+  it should "RETR a file with PASV" in {
+    server.addFile("/qwerty.txt", "qwerty".getBytes)
+    client.anonymousLogin()
+    client.pasvMode()
+    val (n, data) = client <== "qwerty.txt"
+    n shouldBe 6
+    data should be ("qwerty".getBytes)
+  }
+
+  //todo read PORT
+  //todo read PASV
 }

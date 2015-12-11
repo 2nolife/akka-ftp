@@ -7,6 +7,15 @@ import org.scalatest.mock.MockitoSugar
 
 class CommandsSpec extends WordSpec with MockitoSugar with Matchers {
 
+  class GuestFtpState(override val guest: Boolean) extends FtpState(
+    system = null,
+    hostname = "",
+    port = -1,
+    guest,
+    usersdir = "",
+    externalIp = "",
+    pasvPorts = Seq.empty)
+
   "UserCommand" should {
     "error on empty parameter" in {
       val reply = UserCommand("", mock[Session]).exec
@@ -17,12 +26,12 @@ class CommandsSpec extends WordSpec with MockitoSugar with Matchers {
       reply should have ('code (331))
     }
     "deny guest username" in {
-      val session = new Session(null, new FtpState(null, guest = false, null))
+      val session = new Session(null, new GuestFtpState(false), null)
       val reply = UserCommand("anonymous", session).exec
       reply should have ('code (332))
     }
     "accept guest username" in {
-      val session = new Session(null, new FtpState(null, guest = true, null))
+      val session = new Session(null, new GuestFtpState(true), null)
       val reply = UserCommand("anonymous", session).exec
       reply should have ('code (331))
     }
