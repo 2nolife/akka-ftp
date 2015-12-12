@@ -293,7 +293,7 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
       log.debug("Connection for remote address {} failed", remote)
       context.stop(self)
 
-    case StartTransfer if session.dataTransferMode.isDefined => // start transfer now
+    case StartTransfer if session.dataTransferMode.isDefined && session.dataTransferChannel.isDefined => // start transfer now
       log.debug("Starting data trasfer with {}", remote)
       session.dataTransferMode.get match {
         case StorDTM | StouDTM => // write from the channel source to a client
