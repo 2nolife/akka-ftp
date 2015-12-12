@@ -1,18 +1,18 @@
 package com.coldcore.akkaftp.it
 package test
 
+import com.coldcore.akkaftp.it.Utils._
+import com.coldcore.akkaftp.it.client.{FtpClient, Reply}
+import com.coldcore.akkaftp.it.server.FtpServer
 import org.scalatest._
-import com.coldcore.akkaftp.it.server.{MemoryFileSystem, FtpServer}
-import com.coldcore.akkaftp.it.client.{Reply, FtpClient}
+
 import scala.concurrent.duration._
-import Utils._
 
 /** Ensure the FtpClient is working as expected */
 class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter with Matchers {
 
   val server = new FtpServer
   lazy val client = new FtpClient(server.ftpstate)
-  val port = 6004
 
   override protected def beforeAll() {
     server.start()
@@ -53,7 +53,7 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
 
   it should "STOR a file with PORT" in {
     client.anonymousLogin()
-    client.portMode(port)
+    client.portMode()
     val (n, _) = client <== ("abc.txt", "abc".getBytes)
     n shouldBe 3
     server.fileData("/abc.txt") should be ("abc".getBytes)
@@ -70,7 +70,7 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
   it should "RERT a file with PORT" in {
     server.addFile("/qwer.txt", "qwer".getBytes)
     client.anonymousLogin()
-    client.portMode(port)
+    client.portMode()
     val (n, data) = client <== "qwer.txt"
     n shouldBe 4
     data should be ("qwer".getBytes)

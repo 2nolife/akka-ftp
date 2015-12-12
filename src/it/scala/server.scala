@@ -92,7 +92,7 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
   override def listFile: Option[ListingFile] =
     if (!fexists) None
     else Some(new ListingFile("ftp", fdirectory, "rwxrwxrwx", if (fdirectory) "cdeflp" else "adfrw",
-      data.size, path.split("/").last, path, fcreated))
+      data.size, path.split("/").lastOption.getOrElse("/"), path, fcreated))
 }
 
 class DummyUserStore extends UserStore {
@@ -113,20 +113,18 @@ class FtpServer extends Matchers {
 
   private lazy val fs = ftpstate.fileSystem.asInstanceOf[MemoryFileSystem]
 
-  def allFiles = fs.allFiles
-
   def fileData(path: String): Array[Byte] = {
-    allFiles should contain key path
-    allFiles(path).data
+    fs.allFiles should contain key path
+    fs.allFiles(path).data
   }
 
   def addFile(path: String, body: Array[Byte]) = {
     val file = new MemoryFile(path, fs) { fexists = true; fdirectory = false; fdata = body }
-    ftpstate.fileSystem.asInstanceOf[MemoryFileSystem].allFiles = allFiles + (path -> file)
+    fs.allFiles = fs.allFiles + (path -> file)
   }
   def addDirectory(path: String) = {
     val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true }
-    ftpstate.fileSystem.asInstanceOf[MemoryFileSystem].allFiles = allFiles + (path -> file)
+    fs.allFiles = fs.allFiles + (path -> file)
   }
 
   def start() {

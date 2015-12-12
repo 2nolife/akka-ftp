@@ -26,6 +26,7 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     ad("/dirB")
     ad("/dirB/dir1")
     ad("/dirB/dir1/dir2")
+    ad("""/dirB/dir1/dir2/dir "3" 4""")
 
     af("/abc.txt", "abc")
     af("/qwerty.txt", "qwerty")
@@ -40,14 +41,11 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     af("/dirA/dir2/multiline-mix.txt", "\r\nlineA\nline2\r\n\r\nline4\n")
     af("/dirA/dir2/multiline-mix-empty.txt", "\r\n\n\r\n\r\n\n")
 
-    af("/dirB/dir1/chunk-A.bin", "randomdata-1")
-    af("/dirB/dir1/chunkB", "randomdata-2")
     af("/dirB/dir1/chunk C", "randomdata-3")
     af("/dirB/dir1/CHUNK C", "randomdata-4")
     af("/dirB/dir1/dir2/chunked random data long name", "randomdata-5")
     af("/dirB/dir1/dir2/c", "randomdata-6")
-
-    //todo special characters " and ' in dir and filename
+    af("""/dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""", "randomdata-7")
   }
 
   override protected def afterAll() {
@@ -55,6 +53,7 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     server.stop()
   }
 
+  // login
   "USER and PASS commands" should {
     "error on empty username" in {
       ((client <-- "USER") code) should be (501)
@@ -82,6 +81,7 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     }
   }
 
+  // browse directories
   "PWD and CWD and CDUP commands" should {
     "tell current directory" in {
       val reply = client <-- "PWD"
@@ -121,7 +121,7 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
       (reply code) should be (257)
       (reply text) should include (""" "/" """ trim)
     }
-    "change to relative existing directory " in {
+    "change to relative existing directory" in {
       ((client <-- "CWD dirB") code) should be (250)
     }
     "tell current directory after change to relative directory" in {
@@ -129,8 +129,48 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
       (reply code) should be (257)
       (reply text) should include (""" "/dirB" """ trim)
     }
+    "change to relative existing directory with quotes in it" in {
+      ((client <-- """CWD dir1/dir2/dir "3" 4""") code) should be (250)
+    }
+    "tell current directory with quotes encoded" in {
+      val reply = client <-- "PWD"
+      (reply code) should be (257)
+      (reply text) should include (""" "/dirB/dir1/dir2/dir ""3"" 4" """ trim)
+    }
+    "change back to /" in {
+      ((client <-- "CWD /") code) should be (250)
+    }
+    "verify that current directory is /" in {
+      val reply = client <-- "PWD"
+      (reply code) should be (257)
+      (reply text) should include (""" "/" """ trim)
+    }
   }
 
+  // switch modes
+  "MODE and STRU and TYPE commands" should {
+    "error on empty parameter" in {
+      ((client <-- "TYPE") code) should be (501)
+      ((client <-- "MODE") code) should be (501)
+      ((client <-- "STRU") code) should be (501)
+    }
+    "error on invalid parameter" in {
+      ((client <-- "TYPE X") code) should be (504)
+      ((client <-- "MODE X") code) should be (504)
+      ((client <-- "STRU X") code) should be (504)
+    }
+    "accept valid parameter" in {
+      ((client <-- "TYPE I") code) should be (200)
+      ((client <-- "TYPE A") code) should be (200)
+      ((client <-- "MODE S") code) should be (200)
+      ((client <-- "STRU F") code) should be (200)
+    }
+  }
+
+  //todo LIST NLST, MDTM, SIZE, MLSD, MLST, MKD, DELE, RNFR, RNTO
+  //todo RETR, STOR, APPE, REST (with TYPE A/I)
+
+  // logout
   "QUIT command" should {
     "log user out and disconnect" in {
       ((client <-- "QUIT") code) should be (221)

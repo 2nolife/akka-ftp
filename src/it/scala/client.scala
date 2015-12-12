@@ -25,6 +25,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   private[client] var ctrl: ActorRef = _
   private var portOrPasv: Option[PortOrPasvMode] = None
   private var dataref: ActorRef = _
+  private val portPort = 6004
   implicit val timeout: Timeout = 1 second
 
   var replies: List[Reply] = _
@@ -63,7 +64,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     ((this <-- s"CWD $dir") code) should be (450)
   }
 
-  def portMode(port: Int) {
+  def portMode(port: Int = portPort) {
     portOrPasv = None
     val i = port/256
     val pstr = i+","+(port-i*256)
