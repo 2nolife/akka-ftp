@@ -368,8 +368,9 @@ abstract class ListNlstCommand(param: String, val session: Session) extends Comm
   override def exec: Reply = {
     val either: Either[Reply,File] =
       try { Right {
-          if (param.nonEmpty && !param.contains("*") && !param.startsWith("-")) session.ftpstate.fileSystem.file(param, session)
-          else session.currentDir
+        val apath = filenamePath(param)
+        if (param.nonEmpty && !param.contains("*") && !param.startsWith("-")) session.ftpstate.fileSystem.file(apath, session)
+        else session.currentDir
       }} catch { case e: FileSystemException => Left(handleFsError(e)) }
 
     either match {
@@ -539,7 +540,8 @@ case class DeleCommand(param: String, session: Session) extends Command with Log
         Reply(501, "Send path name.")
       case path =>
         try {
-          session.ftpstate.fileSystem.file(path, session).delete()
+          val apath = filenamePath(path)
+          session.ftpstate.fileSystem.file(apath, session).delete()
           Reply(250, "Path deleted.")
         } catch { case e: FileSystemException => handleFsError(e) }
     }
@@ -552,7 +554,8 @@ case class MkdCommand(param: String, session: Session) extends Command with Logg
         Reply(501, "Send directory name.")
       case dir =>
         try {
-          session.ftpstate.fileSystem.file(dir, session).mkdir()
+          val apath = filenamePath(dir)
+          session.ftpstate.fileSystem.file(apath, session).mkdir()
           val enc = dir.replaceAll("\"", "\"\"")
           Reply(257, s""" "$enc" directory created.""".trim)
         } catch { case e: FileSystemException => handleFsError(e) }
@@ -568,7 +571,8 @@ case class RnfrCommand(param: String, session: Session) extends Command with Log
         Reply(501, "Send path name.")
       case path =>
         try {
-          val rnfr = session.ftpstate.fileSystem.file(path, session)
+          val apath = filenamePath(path)
+          val rnfr = session.ftpstate.fileSystem.file(apath, session)
           session.attributes.set(key, rnfr)
           Reply(350, "Send RNTO to complete rename.")
         } catch {
@@ -588,7 +592,8 @@ case class RntoCommand(param: String, session: Session) extends Command with Log
         Reply(503, "Send RNFR first.")
       case path =>
         try {
-          val rnto = session.ftpstate.fileSystem.file(path, session)
+          val apath = filenamePath(path)
+          val rnto = session.ftpstate.fileSystem.file(apath, session)
           rnfr.get.rename(rnto)
           Reply(250, "Path renamed.")
         } catch {
@@ -606,7 +611,8 @@ case class StatCommand(param: String, session: Session) extends Command with Log
         Reply(211, s"Control connection OK, TYPE ${session.dataType}, MODE ${session.dataMode}, STRU ${session.dataStructure}.")
       case path =>
         try {
-          val listdir = session.ftpstate.fileSystem.file(path, session)
+          val apath = filenamePath(path)
+          val listdir = session.ftpstate.fileSystem.file(apath, session)
           val str = serialize(listdir.listFiles)+"end"
           Reply(212, "List results:\r\n"+str)
         } catch { case e: FileSystemException => handleFsError(e) }
@@ -739,7 +745,8 @@ abstract class MldsMlstCommand(param: String, val session: Session) extends Comm
 
   def paramAsFile: Either[Reply,File] =
     try { Right {
-      if (param.isEmpty) session.currentDir else session.ftpstate.fileSystem.file(param, session)
+      val apath = filenamePath(param)
+      if (param.isEmpty) session.currentDir else session.ftpstate.fileSystem.file(apath, session)
     }} catch { case e: FileSystemException => Left(handleFsError(e)) }
 }
 

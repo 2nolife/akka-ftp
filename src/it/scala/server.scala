@@ -52,7 +52,7 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
   private[server] var fdata = Array.empty[Byte]
   private[server] var fexists = false
   private[server] var fdirectory = false
-  private[server] var fcreated = new Date
+  private[server] var fmodified = new Date
 
   def data: Array[Byte] = {
     if (out != null) { // flush data that server wrote to the file
@@ -87,12 +87,18 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
   }
 
   override def exists: Boolean = fexists
-  override def listFiles: Seq[ListingFile] = ???
+
+  override def listFiles: Seq[ListingFile] =
+    if (!fexists) Seq.empty[ListingFile]
+    else fs.allFiles.filter { case (p,_) =>
+      val x = if (path == "/") "/" else path+"/"
+      p.startsWith(x) && p.count('/'==) == x.count('/'==) && p != "/"
+    }.flatMap(_._2.listFile).toSeq
 
   override def listFile: Option[ListingFile] =
     if (!fexists) None
     else Some(new ListingFile("ftp", fdirectory, "rwxrwxrwx", if (fdirectory) "cdeflp" else "adfrw",
-      data.size, path.split("/").lastOption.getOrElse("/"), path, fcreated))
+      data.size, path.split("/").lastOption.getOrElse("/"), path, fmodified))
 }
 
 class DummyUserStore extends UserStore {
@@ -118,12 +124,12 @@ class FtpServer extends Matchers {
     fs.allFiles(path).data
   }
 
-  def addFile(path: String, body: Array[Byte]) = {
-    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = false; fdata = body }
+  def addFile(path: String, body: Array[Byte], modified: Date = new Date) = {
+    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = false; fdata = body; fmodified = modified }
     fs.allFiles = fs.allFiles + (path -> file)
   }
-  def addDirectory(path: String) = {
-    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true }
+  def addDirectory(path: String, modified: Date = new Date) = {
+    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true; fmodified = modified }
     fs.allFiles = fs.allFiles + (path -> file)
   }
 

@@ -1,11 +1,14 @@
 package com.coldcore.akkaftp.it
 package test
 
+import java.text.SimpleDateFormat
+
 import com.coldcore.akkaftp.it.client.FtpClient
 import com.coldcore.akkaftp.it.server.FtpServer
 import org.scalatest._
 import Utils._
 import scala.concurrent.duration._
+import com.coldcore.akkaftp.ftp.core.Constants.EoL
 
 class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
 
@@ -17,8 +20,9 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     client.connect()
 
     implicit def String2Bytes(x: String): Array[Byte] = x.getBytes
-    val ad = server.addDirectory _
-    val af = server.addFile _
+    val mod = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss").parse("02/12/2014 22:34:56")
+    val ad = server.addDirectory(_: String, mod)
+    val af = server.addFile(_: String, _: Array[Byte], mod)
 
     ad("/dirA")
     ad("/dirA/dir1")
@@ -167,7 +171,42 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     }
   }
 
-  //todo LIST NLST, MDTM, SIZE, MLSD, MLST, MKD, DELE, RNFR, RNTO
+  // list directory
+  "LIST command" should {
+    "list current directory" in {
+      client.cwd("/dirA")
+      client.portMode()
+      val (n, text) = client.list("LIST")
+      val expected =
+        "d rwxrwxrwx 1 ftp 0 Dec 02 22:34 dir1" ::
+        "d rwxrwxrwx 1 ftp 0 Dec 02 22:34 dir2" ::
+        "- rwxrwxrwx 1 ftp 10 Dec 02 22:34 digits10.dat" ::
+        "- rwxrwxrwx 1 ftp 15 Dec 02 22:34 digits15.dat" :: Nil
+      text.split(EoL) should have size 4
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list specific directory" in {
+      val (n, text) = client.list("LIST /")
+      val expected =
+        "d rwxrwxrwx 1 ftp 0 Dec 02 22:34 dirA" ::
+        "d rwxrwxrwx 1 ftp 0 Dec 02 22:34 dirB" ::
+        "- rwxrwxrwx 1 ftp 3 Dec 02 22:34 abc.txt" ::
+        "- rwxrwxrwx 1 ftp 6 Dec 02 22:34 qwerty.txt" :: Nil
+      text.split(EoL) should have size 4
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list relative directory" in {
+      val (n, text) = client.list("LIST dir1")
+      val expected =
+        "- rwxrwxrwx 1 ftp 12 Dec 02 22:34 symbols.12" ::
+        "- rwxrwxrwx 1 ftp 15 Dec 02 22:34 symbols.15" ::
+        "- rwxrwxrwx 1 ftp 0 Dec 02 22:34 empty.txt" :: Nil
+      text.split(EoL) should have size 3
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+  }
+
+  //todo NLST, MDTM, SIZE, MLSD, MLST, MKD, DELE, RNFR, RNTO
   //todo RETR, STOR, APPE, REST (with TYPE A/I)
 
   // logout

@@ -61,7 +61,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   }
 
   def cwd(dir: String) {
-    ((this <-- s"CWD $dir") code) should be (450)
+    ((this <-- s"CWD $dir") code) should be (250)
   }
 
   def portMode(port: Int = portPort) {
@@ -111,6 +111,16 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     delay(10 milliseconds)
     replies.head.code shouldBe 226
     t
+  }
+
+  def list(command: String): (Long, String) = {
+    val ref = system.actorOf(DataConnector.props(this), name = "data")
+    val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
+    (this <-- command).code shouldBe 150
+    val t = Await.result(x, timeout.duration)
+    delay(10 milliseconds)
+    replies.head.code shouldBe 226
+    (t._1, new String(t._2))
   }
 }
 
