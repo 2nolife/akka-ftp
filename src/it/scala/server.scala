@@ -31,7 +31,7 @@ class MemoryFileSystem extends FileSystem {
   override def logout(session: Session) {}
 
   override def login(session: Session) {
-    val dir = new MemoryFile("/", this) { fexists = true; fdirectory = true }
+    val dir = allFiles.getOrElse("/", new MemoryFile("/", this) { fexists = true; fdirectory = true })
     allFiles = allFiles + ("/" -> dir)
     session.homeDir = dir
     session.currentDir = dir

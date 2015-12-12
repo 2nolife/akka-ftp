@@ -732,7 +732,7 @@ abstract class MldsMlstCommand(param: String, val session: Session) extends Comm
 
   def pathFacts(lf: ListingFile, cdir: String): Map[String,String] = {
     val facts1 =
-      if (lf.directory) Map(if (lf.path == cdir) ("type" -> "cdir") else ("type" -> "dir"))
+      if (lf.directory) Map(if (lf.path == cdir) "type" -> "cdir" else "type" -> "dir")
       else Map("type" -> "file", "size" -> lf.size.toString)
     val facts2 = Map("modify" -> sdf.format(lf.modified), "perm" -> lf.mlsxFacts)
     facts1 ++ facts2
@@ -779,16 +779,19 @@ case class MlsdCommand(param: String, override val session: Session) extends Mld
       } getOrElse {
         ""
       }
-    val clf = cdir.listFile.get
-    val facts2 = { // current dir
-      val pfacts = pathFacts(clf, cdir.path)
-      serialize(pfacts)+" "+cdir.path+EoL
-    }
+    val facts2 = // current dir
+      cdir.listFile.collectFirst {
+        case clf if clf.directory =>
+          val pfacts = pathFacts(clf, cdir.path)
+          serialize(pfacts)+" "+cdir.path+EoL
+      } getOrElse {
+        ""
+      }
     val facts3 = // listing
-      for (lf <- cdir.listFiles) yield {
+      (for (lf <- cdir.listFiles) yield {
         val pfacts = pathFacts(lf, cdir.path)
         serialize(pfacts)+" "+lf.path+EoL
-      }.mkString
+      }).mkString
     facts1+facts2+facts3
   }
 }
@@ -800,9 +803,9 @@ case class MlstCommand(param: String, override val session: Session) extends Mld
         if (file.exists) {
           val lf = file.listFile.get
           val facts = pathFacts(lf, session.currentDir.path)
-          val str = serialize(facts)+" "+lf.path+EoL
+          val str = serialize(facts)+" "+lf.path
           val content =
-            s"""|Listing ${file.path}$EoL
+            s"""|Listing ${file.path}
                 |$str
                 |End
              """.stripMargin.trim

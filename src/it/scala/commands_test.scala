@@ -24,6 +24,8 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     val ad = server.addDirectory(_: String, mod)
     val af = server.addFile(_: String, _: Array[Byte], mod)
 
+    ad("/")
+
     ad("/dirA")
     ad("/dirA/dir1")
     ad("/dirA/dir2")
@@ -211,9 +213,86 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
       text.split(EoL) should have size 1
       text.split(EoL) should contain theSameElementsAs expected
     }
+    "list file with special symbols in it" in {
+      val (n, text) = client.list("""LIST /dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""")
+      val expected =
+        """- rwxrwxrwx 1 ftp 12 Dec 02 22:34 chunked "special" 'name'""" :: Nil
+      text.split(EoL) should have size 1
+      text.split(EoL) should contain theSameElementsAs expected
+    }
   }
 
-  //todo NLST, MDTM, SIZE, MLSD, MLST, MKD, DELE, RNFR, RNTO
+  // list directory
+  "NLST command" should {
+    "list current directory" in {
+      client.cwd("/dirA")
+      client.portMode()
+      val (n, text) = client.list("NLST")
+      val expected =
+        "dir1/" ::
+        "dir2/" ::
+        "digits10.dat" ::
+        "digits15.dat" :: Nil
+      text.split(EoL) should have size 4
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list specific directory" in {
+      val (n, text) = client.list("NLST /")
+      val expected =
+        "dirA/" ::
+        "dirB/" ::
+        "abc.txt" ::
+        "qwerty.txt" :: Nil
+      text.split(EoL) should have size 4
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list file with special symbols in it" in {
+      val (n, text) = client.list("""NLST /dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""")
+      val expected =
+        """chunked "special" 'name'""" :: Nil
+      text.split(EoL) should have size 1
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+  }
+
+  // list directory
+  "MLSD command" should {
+    "list current directory" in {
+      client.cwd("/dirA")
+      client.portMode()
+      val (n, text) = client.list("MLSD")
+      val expected =
+        "perm=cdeflp;modify=20141202223456;type=pdir; /" ::
+        "perm=cdeflp;modify=20141202223456;type=cdir; /dirA" ::
+        "perm=cdeflp;modify=20141202223456;type=dir; /dirA/dir1" ::
+        "perm=cdeflp;modify=20141202223456;type=dir; /dirA/dir2" ::
+        "perm=adfrw;modify=20141202223456;size=10;type=file; /dirA/digits10.dat" ::
+        "perm=adfrw;modify=20141202223456;size=15;type=file; /dirA/digits15.dat" :: Nil
+      text.split(EoL) should have size 6
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list specific directory" in {
+      val (n, text) = client.list("MLSD /")
+      val expected =
+        "perm=cdeflp;modify=20141202223456;type=cdir; /" ::
+        "perm=cdeflp;modify=20141202223456;type=dir; /dirA" ::
+        "perm=cdeflp;modify=20141202223456;type=dir; /dirB" ::
+        "perm=adfrw;modify=20141202223456;size=3;type=file; /abc.txt" ::
+        "perm=adfrw;modify=20141202223456;size=6;type=file; /qwerty.txt" :: Nil
+      text.split(EoL) should have size 5
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+    "list file with special symbols in it" in {
+      val (n, text) = client.list("""MLSD /dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""")
+      val expected =
+        """perm=cdeflp;modify=20141202223456;type=pdir; /dirB/dir1/dir2/dir "3" 4""" ::
+        """perm=adfrw;modify=20141202223456;size=12;type=file; /dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""" :: Nil
+      text.split(EoL) should have size 2
+      text.split(EoL) should contain theSameElementsAs expected
+    }
+  }
+
+  //todo MDTM, SIZE, MLST, MKD, DELE, RNFR, RNTO
   //todo RETR, STOR, APPE, REST (with TYPE A/I)
 
   // logout

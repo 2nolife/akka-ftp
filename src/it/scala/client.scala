@@ -228,7 +228,7 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
 object Reply {
   def apply(content: String) = {
     val code = content.split(" ").head.toInt
-    val text = content.drop(code.toString.size+1)
+    val text = content.dropWhile(' '!=)+1
     new Reply(code, text)
   }
 }
