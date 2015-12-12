@@ -90,6 +90,7 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
 
   override def listFiles: Seq[ListingFile] =
     if (!fexists) Seq.empty[ListingFile]
+    else if (!fdirectory) Seq(listFile.get)
     else fs.allFiles.filter { case (p,_) =>
       val x = if (path == "/") "/" else path+"/"
       p.startsWith(x) && p.count('/'==) == x.count('/'==) && p != "/"

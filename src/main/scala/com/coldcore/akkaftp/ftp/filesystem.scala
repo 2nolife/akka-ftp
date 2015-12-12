@@ -86,6 +86,7 @@ class JFile(val target: jFile, session: Session, val vpath: Option[String] = Non
 
   override def listFiles: Seq[ListingFile] =
     if (!target.exists) Seq.empty[ListingFile]
+    else if (target.isFile) Seq(listFile.get)
     else target.listFiles.flatMap(new JFile(_, session).listFile)
 
   override def read(position: Long): ReadableByteChannel = {

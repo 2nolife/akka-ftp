@@ -204,6 +204,13 @@ class SimpleScenarioSpec extends WordSpec with BeforeAndAfterAll with Matchers {
       text.split(EoL) should have size 3
       text.split(EoL) should contain theSameElementsAs expected
     }
+    "list file" in {
+      val (n, text) = client.list("LIST dir1/symbols.12")
+      val expected =
+        "- rwxrwxrwx 1 ftp 12 Dec 02 22:34 symbols.12" :: Nil
+      text.split(EoL) should have size 1
+      text.split(EoL) should contain theSameElementsAs expected
+    }
   }
 
   //todo NLST, MDTM, SIZE, MLSD, MLST, MKD, DELE, RNFR, RNTO
