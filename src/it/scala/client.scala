@@ -24,7 +24,6 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   private var system: ActorSystem = _
   private[client] var ctrl: ActorRef = _
   private var portOrPasv: Option[PortOrPasvMode] = None
-  private var dataref: ActorRef = _
   private val portPort = 6004
   implicit val timeout: Timeout = 1 second
 
@@ -97,7 +96,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val x = dconSuccess(ref ? DataConnector.Send(Channels.newChannel(in), portOrPasv.get))
     (this <-- s"STOR $filename").code shouldBe 150
     val t = Await.result(x, timeout.duration)
-    delay(10 milliseconds)
+    delay(100 milliseconds)
     replies.head.code shouldBe 226
     t
   }
@@ -108,7 +107,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
     (this <-- s"RETR $filename").code shouldBe 150
     val t = Await.result(x, timeout.duration)
-    delay(10 milliseconds)
+    delay(100 milliseconds)
     replies.head.code shouldBe 226
     t
   }
@@ -118,7 +117,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
     (this <-- command).code shouldBe 150
     val t = Await.result(x, timeout.duration)
-    delay(10 milliseconds)
+    delay(100 milliseconds)
     replies.head.code shouldBe 226
     (t._1, new String(t._2))
   }
@@ -184,6 +183,13 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
   client.ctrl = self
   client.connected = true
 
+  def extracted(reply: Reply) {
+    client.replies = reply :: client.replies
+    receiver.foreach(_ ! reply)
+    receiver = None
+    self ! Tcp.Received("") // loop to process the next reply from the buffer
+  }
+
   def receive = {
     case Tcp.Received(data) => // server sends data
       buffer.append(data.utf8String)
@@ -191,15 +197,9 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
         case Some(text) => // process the reply
           log.debug("{} ---> {}", remote, text)
           val reply = Reply(text) // receive as is
-          self ! Extracted(reply)
+          extracted(reply)
         case None =>
       }
-
-    case Extracted(reply) =>
-      client.replies = reply :: client.replies
-      receiver.foreach(_ ! reply)
-      receiver = None
-      self ! Tcp.Received("") // loop to process the next reply from the buffer
 
     case Send(text) =>
       connection ! Tcp.Write(text+EoL) // send as is
@@ -228,7 +228,7 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
 object Reply {
   def apply(content: String) = {
     val code = content.split(" ").head.toInt
-    val text = content.dropWhile(' '!=)+1
+    val text = content.drop(code.toString.size+1)
     new Reply(code, text)
   }
 }
@@ -258,37 +258,48 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
   var endpoint: InetSocketAddress = _
   var receiver: ActorRef = _
   var sendOrReceive: SendOrReceiveData = _
+  var pop: PortOrPasvMode = _
   var channel: Option[ReadableByteChannel] = None
+  var socketActor: Option[ActorRef] = None
 
-  def open(portOrPasv: PortOrPasvMode) {
-    portOrPasv match {
+  def open() =
+    pop match {
       case PasvMode(port) =>
         endpoint = new InetSocketAddress(client.ftpstate.hostname, port)
         IO(Tcp)(context.system) ! Tcp.Connect(endpoint)
       case PortMode(port) =>
         endpoint = new InetSocketAddress(client.ftpstate.hostname, port)
         IO(Tcp)(context.system) ! Tcp.Bind(self, endpoint)
-        //log.info(s"Data listener bound to ${endpoint.getHostName}:${endpoint.getPort}")
     }
-  }
 
   def receive = {
     case Send(rbc, portOrPasv) =>
       receiver = sender
       sendOrReceive = SendData
       channel = Some(rbc)
-      open(portOrPasv)
+      pop = portOrPasv
+      open()
 
     case Receive(portOrPasv) =>
       receiver = sender
       sendOrReceive = ReceiveData
-      open(portOrPasv)
+      pop = portOrPasv
+      open()
 
     case Tcp.Connected(remote, _) =>
       log.debug("Connected to remote address {}", remote)
       val ref = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
       sender ! Tcp.Register(ref)
+      delay(500 milliseconds) //todo
       channel.foreach(ref !) //send data to the server
+
+    case Tcp.Bound(remote) =>
+      socketActor = Some(sender)
+      log.info(s"Data listener bound to {}", remote)
+
+    case Tcp.Unbound =>
+      log.info(s"Data listener unbound")
+      context.stop(self)
 
     case Tcp.CommandFailed(_: Tcp.Connect) => // cannot connect
       log.debug("Connection to remote endpoint {} failed", endpoint.getHostName+":"+endpoint.getPort)
@@ -296,7 +307,10 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
 
     case x @ Success(_, _) => // data transferred
       receiver ! x
-      context.stop(self) 
+      pop match {
+        case PasvMode(_) => context.stop(self)
+        case PortMode(_) => socketActor.foreach(_ ! Tcp.Unbind)
+      }
   }
 
   override def supervisorStrategy: SupervisorStrategy =

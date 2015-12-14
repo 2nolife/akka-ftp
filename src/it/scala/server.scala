@@ -73,9 +73,16 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
     }
   }
 
-  override def rename(dst: File): Unit = ???
-  override def mkdir(): Unit = ???
-  override def delete(): Unit = ???
+  override def rename(dst: File) {
+    fexists = false
+    fs.allFiles = fs.allFiles + (dst.path -> dst.asInstanceOf[MemoryFile])
+  }
+
+  override def mkdir() {
+    val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true }
+    fs.allFiles = fs.allFiles + (path -> file)
+  }
+  override def delete() = fexists = false
 
   override def write(append: Boolean): WritableByteChannel = {
     out = new ByteArrayOutputStream
@@ -83,7 +90,9 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
   }
 
   override def read(position: Long): ReadableByteChannel = {
-    Channels.newChannel(new ByteArrayInputStream(data))
+    val in = new ByteArrayInputStream(data)
+    (1 to position.toInt).foreach(_ => in.read)
+    Channels.newChannel(in)
   }
 
   override def exists: Boolean = fexists

@@ -392,28 +392,30 @@ class DataConnectorNode(hostname: String, pt: Iterator[Int]) extends Actor with 
     DataConnection.resetSession(session)
   }
 
+  def ip(remote: InetSocketAddress) = remote.getAddress.getAddress.map(_ & 0xff).mkString(".")
+
   def receive = {
-    case Tcp.Connected(remote, _) if reserved.contains(remote.getHostName) => // connected
+    case Tcp.Connected(remote, _) if reserved.contains(ip(remote)) => // connected
       log.debug("Remote address {} connected", remote)
-      val session = reserved.remove(remote.getHostName).get
+      val session = reserved.remove(ip(remote)).get
       session.attributes.get[Cancellable](timeoutSch).foreach(_.cancel())
       sender ! Tcp.Register(context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next))
 
     case Tcp.Connected(remote, _) => // connected
-      log.debug("Unrecognised remote address {} connected", remote)
+      log.debug("Unrecognised remote IP {} connected", ip(remote))
       sender ! Tcp.Close //todo will this work?
 
-    case Reserve(session, attempt, owner) if reserved.contains(session.remote.getHostName) => // spot already taken
+    case Reserve(session, attempt, owner) if reserved.contains(ip(session.remote)) => // spot already taken
       sender ! Fail(session, attempt, owner)
 
     case Reserve(session, _, owner) => // reserve a spot for a connection
-      reserved.put(session.remote.getHostName, session)
+      reserved.put(ip(session.remote), session)
       val x = context.system.scheduler.scheduleOnce(15.seconds, self, DataConnector.Cancel(session))
       session.attributes.set(timeoutSch, x)
       sender ! Success(session, endpoint.getPort, owner)
 
-    case DataConnector.Cancel(session) if reserved.contains(session.remote.getHostName) => // cancel reservation
-      reserved.remove(session.remote.getHostName)
+    case DataConnector.Cancel(session) if reserved.contains(ip(session.remote)) => // cancel reservation
+      reserved.remove(ip(session.remote))
       session.attributes.get[Cancellable](timeoutSch).foreach(_.cancel())
       fail(session)
 

@@ -67,6 +67,7 @@ trait DataTransferOps {
         system.actorOf(DataConnectionInitiator.props(ep, session), name = "data-initiator-"+ID.next)
       case None => throw new IllegalStateException(s"No data opener type set in session #${session.id}")
     }
+    session.dataMarker = 0
   }
 
   def closeChannel() {
@@ -764,7 +765,7 @@ case class MlsdCommand(param: String, override val session: Session) extends Mld
             Reply(150, s"Opening A mode data connection for MLSD ${listdir.path}.")
           }
         } else {
-          Reply(450, s"Path not foubd.")
+          Reply(450, s"Path not found.")
         }
       case Left(reply) =>
         reply
@@ -804,14 +805,10 @@ case class MlstCommand(param: String, override val session: Session) extends Mld
           val lf = file.listFile.get
           val facts = pathFacts(lf, session.currentDir.path)
           val str = serialize(facts)+" "+lf.path
-          val content =
-            s"""|Listing ${file.path}
-                |$str
-                |End
-             """.stripMargin.trim
+          val content = s"Listing ${file.path}${EoL}$str${EoL}End"
           Reply(250, content)
         } else {
-          Reply(450, s"Path not foubd.")
+          Reply(450, s"Path not found.")
         }
       case Left(reply) =>
         reply
