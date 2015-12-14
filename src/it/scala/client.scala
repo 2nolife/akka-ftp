@@ -25,7 +25,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   private[client] var ctrl: ActorRef = _
   private var portOrPasv: Option[PortOrPasvMode] = None
   private val portPort = 6004
-  implicit val timeout: Timeout = 3 second
+  implicit val timeout: Timeout = 3.seconds
 
   var replies: List[Reply] = _
   var connected = false
@@ -42,7 +42,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   /** send a command to the server (fire and forget) */
   def -->(text: String) = ctrl ! CtrlConnection.Send(text)
 
-  /** send a command to the server and get the reply */
+  /** send a command to the server and return a reply */
   def <--(text: String): Reply = {
     val x = cconSuccess(ctrl ? CtrlConnection.Send(text))
     Await.result(x, timeout.duration)
@@ -92,7 +92,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
       case _ => throw new IllegalStateException("Failed to receive server reply")
     }
 
-  /** send a data to the server and get the data sent */
+  /** send a data to the server (return the data send) */
   private def sendData(command: String, data: Array[Byte]): (Long, Array[Byte]) = {
     if (portOrPasv.isEmpty) pasvMode()
     val in = new ByteArrayInputStream(data)
@@ -106,7 +106,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     t
   }
 
-  /** retrieve a file from the server and get the data retrieved */
+  /** retrieve a data from the server */
   private def readData(command: String): (Long, Array[Byte]) = {
     if (portOrPasv.isEmpty) pasvMode()
     val ref = system.actorOf(DataConnector.props(this), name = "data")
