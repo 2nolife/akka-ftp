@@ -25,7 +25,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   private[client] var ctrl: ActorRef = _
   private var portOrPasv: Option[PortOrPasvMode] = None
   private val portPort = 6004
-  implicit val timeout: Timeout = 1 second
+  implicit val timeout: Timeout = 3 second
 
   var replies: List[Reply] = _
   var connected = false
@@ -301,7 +301,7 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
       log.debug("Connected to remote address {}", remote)
       val ref = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
       sender ! Tcp.Register(ref)
-      delay(300 milliseconds) //todo How to know when the connection is registered thus the date can be pushed to the server?
+      delay(500 milliseconds) //todo How to know when the connection is registered thus the data can be pushed to the server?
       channel.foreach(ref !) //send data to the server
 
     case Tcp.Bound(remote) =>
