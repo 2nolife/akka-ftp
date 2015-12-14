@@ -35,18 +35,7 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
     client.replies.head should matchPattern { case Reply(220, _) => }
   }
 
-  it should "send a NOOP coomand and receive a 200 OK reply (with delay)" in {
-    client --> "NOOP"
-    delay(10 milliseconds)
-    client.replies should have size 2
-    client.replies.head should matchPattern { case Reply(200, "OK" | "OK ") => }
-    client --> "NOOP foo"
-    delay(10 milliseconds)
-    client.replies should have size 3
-    client.replies.head shouldBe Reply(200, "OK foo")
-  }
-
-  it should "send a NOOP coomand and receive a 200 OK reply (no delay)" in {
+  it should "send a NOOP coomand and receive a 200 OK reply" in {
     (client <-- "NOOP") should matchPattern { case Reply(200, "OK" | "OK ") => }
     (client <-- "NOOP foo") shouldBe Reply(200, "OK foo")
   }

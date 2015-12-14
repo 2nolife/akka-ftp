@@ -44,11 +44,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
 
   /** send a command to the server and get the reply */
   def <--(text: String): Reply = {
-    val x = (ctrl ? CtrlConnection.Send(text)).map {
-      case reply @ Reply(_, _) => reply
-    } recover {
-      case _ => throw new IllegalStateException("Failed to receive server reply")
-    }
+    val x = cconSuccess(ctrl ? CtrlConnection.Send(text))
     Await.result(x, timeout.duration)
   }
 
@@ -86,11 +82,19 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     x.map {
       case DataConnector.Success(n, bytes) => (n, bytes)
     } recover {
-      case _ => throw new IllegalStateException("Failed to send data to server")
+      case _ => throw new IllegalStateException("Failed to transfer data to/from server")
+    }
+
+  private val cconSuccess = (x: Future[Any]) =>
+    x.map {
+      case reply @ Reply(_, _) => reply
+    } recover {
+      case _ => throw new IllegalStateException("Failed to receive server reply")
     }
 
   /** send a file to the server and get the data sent */
   def <==(filename: String, data: Array[Byte]): (Long, Array[Byte]) = {
+    if (portOrPasv.isEmpty) pasvMode()
     val in = new ByteArrayInputStream(data)
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Send(Channels.newChannel(in), portOrPasv.get))
@@ -98,27 +102,32 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val t = Await.result(x, timeout.duration)
     delay(100 milliseconds)
     replies.head.code shouldBe 226
+    portOrPasv = None
     t
   }
 
   /** retrieve a file from the server and get the data retrieved */
   def <==(filename: String): (Long, Array[Byte]) = {
+    if (portOrPasv.isEmpty) pasvMode()
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
     (this <-- s"RETR $filename").code shouldBe 150
     val t = Await.result(x, timeout.duration)
     delay(100 milliseconds)
     replies.head.code shouldBe 226
+    portOrPasv = None
     t
   }
 
   def list(command: String): (Long, String) = {
+    if (portOrPasv.isEmpty) pasvMode()
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
     (this <-- command).code shouldBe 150
     val t = Await.result(x, timeout.duration)
     delay(100 milliseconds)
     replies.head.code shouldBe 226
+    portOrPasv = None
     (t._1, new String(t._2))
   }
 }
@@ -290,7 +299,7 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
       log.debug("Connected to remote address {}", remote)
       val ref = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
       sender ! Tcp.Register(ref)
-      delay(500 milliseconds) //todo
+      delay(300 milliseconds) //todo How to know when the connection is registered thus the date can be pushed to the server?
       channel.foreach(ref !) //send data to the server
 
     case Tcp.Bound(remote) =>
@@ -338,6 +347,7 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, sendOrRece
 
   def receive = {
     case Tcp.Received(data) => // the server sends data
+      println(">>>>>> Tcp.Received")
       val b = data.asByteBuffer
       val i = memchannel.write(b)
       transferredBytes += i

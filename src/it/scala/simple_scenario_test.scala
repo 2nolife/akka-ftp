@@ -456,7 +456,6 @@ class FileTransferSpec extends WordSpec with BeforeAndAfterAll with Matchers wit
 
   "RETR command" should {
     "receive file with type A" in {
-      client.pasvMode()
       ((client <-- "TYPE A") code) should be (200)
       val expected = "\r\nline1\r\nline2\r\n\r\nline3\r\n"
       val (n, data) = client <== "/dirA/dir2/multiline-unix.txt"
@@ -464,7 +463,6 @@ class FileTransferSpec extends WordSpec with BeforeAndAfterAll with Matchers wit
       data should be (expected.getBytes)
     }
     "receive file with type I" in {
-      client.pasvMode()
       ((client <-- "TYPE I") code) should be (200)
       val expected = "\nline1\nline2\n\nline3\n"
       val (n, data) = client <== "/dirA/dir2/multiline-unix.txt"
@@ -484,7 +482,6 @@ class FileTransferSpec extends WordSpec with BeforeAndAfterAll with Matchers wit
     "set marker with type I and receive part of file" in {
       ((client <-- "TYPE I") code) should be (200)
       ((client <-- "REST 7") code) should be (350)
-      client.pasvMode()
       val expected = "line2\n\nline3\n"
       val (n, data) = client <== "/dirA/dir2/multiline-unix.txt"
       n shouldBe expected.size
@@ -496,31 +493,20 @@ class FileTransferSpec extends WordSpec with BeforeAndAfterAll with Matchers wit
     "send file with type A" in {
       ((client <-- "TYPE A") code) should be (200)
       val expected = "\nline1\nline2\n\nline3\n"
-      client.portMode()
       client <== ("my-multiline.txt", expected.getBytes)
-      //verify
-      ((client <-- "TYPE I") code) should be (200)
-      client.pasvMode()
-      val (n, data) = client <== "my-multiline.txt"
-      n shouldBe expected.size
-      data should be (expected.getBytes)
+      server.fileData("/my-multiline.txt") should be (expected.getBytes)
     }
     "send file with type I" in {
       ((client <-- "TYPE I") code) should be (200)
       val expected = "\nline1\nline2\n\nline3\n"
-      client.pasvMode()
       client <== ("my-multiline-2.txt", expected.getBytes)
-      //verify
-      ((client <-- "TYPE I") code) should be (200)
-      client.pasvMode()
-      val (n, data) = client <== "my-multiline-2.txt"
-      n shouldBe expected.size
-      data should be (expected.getBytes)
+      server.fileData("/my-multiline-2.txt") should be (expected.getBytes)
     }
   }
 
 }
 
+/*
 class FailedSpec extends WordSpec with BeforeAndAfterAll with Matchers with CreateSampleFiles {
 
   val server = new FtpServer
@@ -548,3 +534,4 @@ class FailedSpec extends WordSpec with BeforeAndAfterAll with Matchers with Crea
   }
 
 }
+*/
