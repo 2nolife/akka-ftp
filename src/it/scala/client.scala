@@ -92,13 +92,13 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
       case _ => throw new IllegalStateException("Failed to receive server reply")
     }
 
-  /** send a file to the server and get the data sent */
-  def <==(filename: String, data: Array[Byte]): (Long, Array[Byte]) = {
+  /** send a data to the server and get the data sent */
+  private def sendData(command: String, data: Array[Byte]): (Long, Array[Byte]) = {
     if (portOrPasv.isEmpty) pasvMode()
     val in = new ByteArrayInputStream(data)
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Send(Channels.newChannel(in), portOrPasv.get))
-    (this <-- s"STOR $filename").code shouldBe 150
+    (this <-- command).code shouldBe 150
     val t = Await.result(x, timeout.duration)
     delay(100 milliseconds)
     replies.head.code shouldBe 226
@@ -107,19 +107,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   }
 
   /** retrieve a file from the server and get the data retrieved */
-  def <==(filename: String): (Long, Array[Byte]) = {
-    if (portOrPasv.isEmpty) pasvMode()
-    val ref = system.actorOf(DataConnector.props(this), name = "data")
-    val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
-    (this <-- s"RETR $filename").code shouldBe 150
-    val t = Await.result(x, timeout.duration)
-    delay(100 milliseconds)
-    replies.head.code shouldBe 226
-    portOrPasv = None
-    t
-  }
-
-  def list(command: String): (Long, String) = {
+  private def readData(command: String): (Long, Array[Byte]) = {
     if (portOrPasv.isEmpty) pasvMode()
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
@@ -128,6 +116,20 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     delay(100 milliseconds)
     replies.head.code shouldBe 226
     portOrPasv = None
+    t
+  }
+
+  def <==(filename: String, data: Array[Byte]): (Long, Array[Byte]) =
+    sendData(s"STOR $filename", data)
+
+  def appe(filename: String, data: Array[Byte]): (Long, Array[Byte]) =
+    sendData(s"APPE $filename", data)
+
+  def <==(filename: String): (Long, Array[Byte]) =
+    readData(s"RETR $filename")
+
+  def list(command: String): (Long, String) = {
+    val t = readData(command)
     (t._1, new String(t._2))
   }
 }

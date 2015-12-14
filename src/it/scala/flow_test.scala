@@ -53,8 +53,6 @@ class LoginLogoutSpec extends WordSpec with BeforeAndAfterAll with Matchers {
     }
   }
 
-  //todo RETR, STOR, APPE, REST (with TYPE A/I)
-
   // logout
   "QUIT command" should {
     "log user out and disconnect" in {
@@ -490,48 +488,34 @@ class FileTransferSpec extends WordSpec with BeforeAndAfterAll with Matchers wit
   }
 
   "STOR command" should {
-    "send file with type A" in {
+    "send file with type A (unix server)" in {
       ((client <-- "TYPE A") code) should be (200)
+      val senddata = "\r\nline1\r\nline2\n\nline3\n"
       val expected = "\nline1\nline2\n\nline3\n"
-      client <== ("my-multiline.txt", expected.getBytes)
+      client <== ("my-multiline.txt", senddata.getBytes)
       server.fileData("/my-multiline.txt") should be (expected.getBytes)
     }
     "send file with type I" in {
       ((client <-- "TYPE I") code) should be (200)
-      val expected = "\nline1\nline2\n\nline3\n"
+      val expected = "\r\nline1\r\nline2\n\nline3\n"
       client <== ("my-multiline-2.txt", expected.getBytes)
       server.fileData("/my-multiline-2.txt") should be (expected.getBytes)
     }
   }
 
-}
-
-/*
-class FailedSpec extends WordSpec with BeforeAndAfterAll with Matchers with CreateSampleFiles {
-
-  val server = new FtpServer
-  lazy val client = new FtpClient(server.ftpstate)
-
-  override protected def beforeAll() {
-    server.start()
-    createSampleFiles()
-    client.connect()
-    client.login("myuser", "myuser")
-  }
-
-  override protected def afterAll() {
-    client.disconnect()
-    server.stop()
-  }
-
-  "STOR command" should {
-    "send file with type A" in {
+  "APPE command" should {
+    "error on append with type A" in {
       ((client <-- "TYPE A") code) should be (200)
-      val expected = "\nline1\nline2\n\nline3\n"
-      client.pasvMode()
-      client <== ("my-multiline.txt", expected.getBytes)
+      ((client <-- "APPE /dirA/digits10.dat") code) should be (550)
+    }
+    "send file with type I" in {
+      ((client <-- "TYPE I") code) should be (200)
+      val expected = "1234567890-abc\r\n\n"
+      client appe ("/dirA/digits10.dat", "-abc\r\n\n".getBytes)
+      server.fileData("/dirA/digits10.dat") should be (expected.getBytes)
     }
   }
 
 }
-*/
+
+//todo STAT ABOR QUIT with and without active data connection

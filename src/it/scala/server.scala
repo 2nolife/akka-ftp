@@ -86,6 +86,7 @@ class MemoryFile(val path: String, fs: MemoryFileSystem) extends File {
 
   override def write(append: Boolean): WritableByteChannel = {
     out = new ByteArrayOutputStream
+    if (append) out.write(fdata)
     Channels.newChannel(out)
   }
 
