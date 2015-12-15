@@ -30,3 +30,12 @@ Contributions via GitHub pull requests are gladly accepted from their original a
 ## License ##
 
 This code is open source software licensed under the [GNU Lesser General Public License v3](http://www.gnu.org/licenses/lgpl-3.0.en.html).
+
+
+## Bug list ##
+
+TODO Please read this chapter before submitting a bug. TODO
+
+## Release notes ##
+
+TODO Release 1.0 TODO
