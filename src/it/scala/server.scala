@@ -14,6 +14,7 @@ import org.scalatest.Matchers
 import scala.concurrent.duration._
 import Utils._
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.text.SimpleDateFormat
 
 class CustomFtpState(override val system: ActorSystem,
                      override val hostname: String,
@@ -139,6 +140,7 @@ class FtpServer extends Matchers {
     val file = new MemoryFile(path, fs) { fexists = true; fdirectory = false; fdata = body; fmodified = modified }
     fs.allFiles = fs.allFiles + (path -> file)
   }
+
   def addDirectory(path: String, modified: Date = new Date) = {
     val file = new MemoryFile(path, fs) { fexists = true; fdirectory = true; fmodified = modified }
     fs.allFiles = fs.allFiles + (path -> file)
@@ -156,5 +158,50 @@ class FtpServer extends Matchers {
     println("Stopping FTP server")
     system.shutdown()
     delay(1 second)
+  }
+}
+
+trait CreateSampleFiles {
+  val server: FtpServer
+
+  implicit def String2Bytes(x: String): Array[Byte] = x.getBytes
+  val mod = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss").parse("02/12/2014 22:34:56")
+  val ad = server.addDirectory(_: String, mod)
+  val af = server.addFile(_: String, _: Array[Byte], mod)
+
+  def createSampleFiles() {
+    // root
+    ad("/")
+
+    // directories
+    ad("/dirA")
+    ad("/dirA/dir1")
+    ad("/dirA/dir2")
+    ad("/dirB")
+    ad("/dirB/dir1")
+    ad("/dirB/dir1/dir2")
+    ad("""/dirB/dir1/dir2/dir "3" 4""")
+
+    // root files
+    af("/abc.txt", "abc")
+    af("/qwerty.txt", "qwerty")
+
+    // files in dirA (simple file names with unix/win line feeds)
+    af("/dirA/digits10.dat", "1234567890")
+    af("/dirA/digits15.dat", "123456789012345")
+    af("/dirA/dir1/symbols.12", "qwertyuiop12")
+    af("/dirA/dir1/symbols.15", "23-qwertyuiop12")
+    af("/dirA/dir1/empty.txt", "")
+    af("/dirA/dir2/multiline-unix.txt", "\nline1\nline2\n\nline3\n")
+    af("/dirA/dir2/multiline-win.txt", "\r\nlineA\r\nlineB\r\n\r\nlineC\r\n")
+    af("/dirA/dir2/multiline-mix.txt", "\r\nlineA\nline2\r\n\r\nline4\n")
+    af("/dirA/dir2/multiline-mix-empty.txt", "\r\n\n\r\n\r\n\n")
+
+    // files in dirB (weird file names with weird content) content may change in the future
+    af("/dirB/dir1/chunk C", "randomdata-3")
+    af("/dirB/dir1/CHUNK C", "randomdata-4")
+    af("/dirB/dir1/dir2/chunked random data long name", "randomdata-5")
+    af("/dirB/dir1/dir2/c", "randomdata-6")
+    af("""/dirB/dir1/dir2/dir "3" 4/chunked "special" 'name'""", "randomdata-7")
   }
 }

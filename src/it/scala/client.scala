@@ -24,10 +24,10 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   private var system: ActorSystem = _
   private[client] var ctrl: ActorRef = _
   private var portOrPasv: Option[PortOrPasvMode] = None
-  private val portPort = 6004
   implicit val timeout: Timeout = 3.seconds
 
   var replies: List[Reply] = _
+  var portPort = 6004
   var connected = false
 
   def connect() {
@@ -45,6 +45,11 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   /** send a command to the server and return a reply */
   def <--(text: String): Reply = {
     val x = cconSuccess(ctrl ? CtrlConnection.Send(text))
+    Await.result(x, timeout.duration)
+  }
+
+  def nextReply: Reply = {
+    val x = cconSuccess(ctrl ? CtrlConnection.Send(""))
     Await.result(x, timeout.duration)
   }
 
@@ -99,11 +104,9 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Send(Channels.newChannel(in), portOrPasv.get))
     (this <-- command).code shouldBe 150
-    val t = Await.result(x, timeout.duration)
-    delay(100 milliseconds)
-    replies.head.code shouldBe 226
+    nextReply.code shouldBe 226
     portOrPasv = None
-    t
+    Await.result(x, timeout.duration)
   }
 
   /** retrieve a data from the server */
@@ -112,11 +115,9 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     val ref = system.actorOf(DataConnector.props(this), name = "data")
     val x = dconSuccess(ref ? DataConnector.Receive(portOrPasv.get))
     (this <-- command).code shouldBe 150
-    val t = Await.result(x, timeout.duration)
-    delay(100 milliseconds)
-    replies.head.code shouldBe 226
+    nextReply.code shouldBe 226
     portOrPasv = None
-    t
+    Await.result(x, timeout.duration)
   }
 
   def <==(filename: String, data: Array[Byte]): (Long, Array[Byte]) =
@@ -128,10 +129,8 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
   def <==(filename: String): (Long, Array[Byte]) =
     readData(s"RETR $filename")
 
-  def list(command: String): (Long, String) = {
-    val t = readData(command)
-    (t._1, new String(t._2))
-  }
+  def list(command: String): (Long, String) =
+    readData(command) match { case (n, bytes) => (n, new String(bytes, UTF8)) }
 }
 
 object CtrlConnector {
@@ -212,7 +211,10 @@ class CtrlConnection(remote: InetSocketAddress, connection: ActorRef, client: Ft
         case None =>
       }
 
-    case Send(text) =>
+    case Send("") => // catch server reply
+      receiver = Some(sender)
+
+    case Send(text) => // send a command to the server
       connection ! Tcp.Write(text+EoL) // send as is
       log.debug("{} <--- {}", remote, text)
       receiver = Some(sender)
@@ -264,7 +266,8 @@ object DataConnector {
 }
 
 class DataConnector(client: FtpClient) extends Actor with ActorLogging {
-  import com.coldcore.akkaftp.it.client.DataConnector._
+  import DataConnector._
+  import context.dispatcher
 
   var endpoint: InetSocketAddress = _
   var receiver: ActorRef = _
@@ -272,6 +275,9 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
   var pop: PortOrPasvMode = _
   var channel: Option[ReadableByteChannel] = None
   var socketActor: Option[ActorRef] = None
+  var dataconn: ActorRef = _
+
+  case object StartSendingData
 
   def open() =
     pop match {
@@ -299,10 +305,13 @@ class DataConnector(client: FtpClient) extends Actor with ActorLogging {
 
     case Tcp.Connected(remote, _) =>
       log.debug("Connected to remote address {}", remote)
-      val ref = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
-      sender ! Tcp.Register(ref)
-      delay(500 milliseconds) //todo How to know when the connection is registered thus the data can be pushed to the server?
-      channel.foreach(ref !) //send data to the server
+      dataconn = context.actorOf(DataConnection.props(remote, sender, sendOrReceive))
+      sender ! Tcp.Register(dataconn)
+      //todo How to know when the connection is registered thus the data can be pushed to the server?
+      context.system.scheduler.scheduleOnce(500.milliseconds, self, StartSendingData)
+
+    case StartSendingData => //send data to the server
+      channel.foreach(dataconn !)
 
     case Tcp.Bound(remote) =>
       socketActor = Some(sender)
@@ -349,7 +358,6 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, sendOrRece
 
   def receive = {
     case Tcp.Received(data) => // the server sends data
-      println(">>>>>> Tcp.Received")
       val b = data.asByteBuffer
       val i = memchannel.write(b)
       transferredBytes += i

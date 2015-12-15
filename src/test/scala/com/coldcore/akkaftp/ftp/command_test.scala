@@ -42,22 +42,18 @@ class CommandsSpec extends WordSpec with MockitoSugar with Matchers {
   }
 
   "MlstCommand" should {
-    val ftpstate = mock[FtpState]
-    val fs = mock[FileSystem]
-    val session = mock[Session]
-    val cdir = mock[File]
-    when(session.ftpstate).thenReturn(ftpstate)
+    val (ftpstate, fs, session, cdir) = (mock[FtpState], mock[FileSystem], mock[Session], mock[File])
     when(ftpstate.fileSystem).thenReturn(fs)
+    when(session.ftpstate).thenReturn(ftpstate)
+    when(session.currentDir).thenReturn(cdir)
     when(cdir.path).thenReturn("/")
     when(cdir.exists).thenReturn(true)
-    when(session.currentDir).thenReturn(cdir)
 
     "error on non-existing path" in {
       val path = mock[File]
       when(fs.file("/abc", session)).thenReturn(path)
       when(path.exists).thenReturn(false)
       val reply = MlstCommand("/abc", session).exec
-      println(reply)
       reply should have ('code (450))
     }
     "list current directory" in {
