@@ -156,7 +156,7 @@ class FtpServer extends Matchers {
 
   def stop() {
     println("Stopping FTP server")
-    system.shutdown()
+    system.terminate()
     delay(1 second)
   }
 }

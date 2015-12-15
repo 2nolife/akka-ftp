@@ -37,7 +37,7 @@ class FtpClient(val ftpstate: FtpState) extends Matchers {
     delay(1 second)
   }
 
-  def disconnect() = system.shutdown()
+  def disconnect() = system.terminate()
 
   /** send a command to the server (fire and forget) */
   def -->(text: String) = ctrl ! CtrlConnection.Send(text)

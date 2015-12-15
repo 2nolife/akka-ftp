@@ -3,6 +3,9 @@ package com.coldcore.akkaftp
 import akka.actor.ActorSystem
 import com.coldcore.akkaftp.ftp.core.FtpState
 
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
+
 class Launcher {
   def createFtpState(system: ActorSystem): FtpState = {
     val hostname = Settings(system).hostname
@@ -39,10 +42,10 @@ class Launcher {
 
     sys.addShutdownHook {
       println("Shutting down ...")
-      system.shutdown()
+      system.terminate()
     }
 
-    system.awaitTermination()
+    Await.result(system.whenTerminated, Duration.Inf)
   }
 }
 

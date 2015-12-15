@@ -1,18 +1,17 @@
 import sbt._
 
 object Version {
-  val akka      = "2.3.6"
-  val logback   = "1.1.2"
-  val scala     = "2.11.2"
+  val akka      = "2.4.1"
+  val logback   = "1.1.3"
+  val scala     = "2.11.7"
   val scalaTest = "2.2.5"
-  val spray     = "1.3.1"
-  val sprayJson = "1.2.6"
+  val spray     = "1.3.3"
+  val sprayJson = "1.3.2"
   val mockito   = "1.10.19"
 }
 
 object Library {
   val akkaActor       = "com.typesafe.akka" %% "akka-actor"                    % Version.akka
-  val akkaPersistence = "com.typesafe.akka" %% "akka-persistence-experimental" % Version.akka
   val akkaSlf4j       = "com.typesafe.akka" %% "akka-slf4j"                    % Version.akka
   val akkaTestkit     = "com.typesafe.akka" %% "akka-testkit"                  % Version.akka
   val logbackClassic  = "ch.qos.logback"    %  "logback-classic"               % Version.logback
@@ -29,7 +28,6 @@ object Dependencies {
 
   val AkkaFtp = List(
     akkaActor,
-    akkaPersistence,
     akkaSlf4j,
     logbackClassic,
     sprayCan,

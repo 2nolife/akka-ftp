@@ -98,7 +98,7 @@ class RestService(hostname: String, port: Int, ftpstate: FtpState) extends HttpS
             get {
               complete {
                 val system = context.system
-                system.scheduler.scheduleOnce(1 second)(system.shutdown())
+                system.scheduler.scheduleOnce(1 second)(system.terminate())
                 SimpleMessage("Shutting down in 1 second")
               }
             }
