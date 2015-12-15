@@ -178,9 +178,11 @@ class DataConnectionInitiator(endpoint: InetSocketAddress, session: Session) ext
   def receive = {
     case Tcp.Connected(remote, _) => // connected
       log.debug("Connected to remote address {}", remote)
-      sender ! Tcp.Register(context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next))
+      val dconref = context.actorOf(DataConnection.props(remote, sender, session), name = "conn-"+ID.next)
+      sender ! Tcp.Register(dconref)
+      context.watch(dconref)
 
-    case DataConnection.Stopped => // data connection stopped
+    case Terminated(_) => // data connection stopped
       context.stop(self)
 
     case Tcp.CommandFailed(_: Tcp.Connect) => // cannot connect
@@ -201,7 +203,6 @@ object DataConnection { //todo inactive timeout
   def props(remote: InetSocketAddress, connection: ActorRef, session: Session): Props =
     Props(new DataConnection(remote, connection, session))
 
-  case object Stopped
   case object Abort
 
   sealed trait ReportState
@@ -313,7 +314,6 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
     session.ctrl ! report.getOrElse(Failed) // notify the control connection
     log.debug("Closing connection to remote address {}", remote)
     resetSession(session)
-    context.parent ! Stopped
     super.postStop()
   }
 
