@@ -17,7 +17,7 @@ $ sbt run
 
 To stop the server either `^C` or send a GET request to [http://localhost:2080/api/action/shutdown](http://localhost:2080/api/action/shutdown)
 
-## Big thanks goes to ##
+## Big thank you goes to ##
 
 [ColoradoFTP](https://bitbucket.org/nolife/coloradoftp) for the FTP commands and ideas.
 
