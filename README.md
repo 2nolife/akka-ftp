@@ -5,6 +5,8 @@ The Akka-FTP project is the reactive FTP server which uses Akka actors under the
 For details check out the [Akka-FTP blog](http://akka-ftp.blogspot.co.uk).
 Please read the [introduction chapter](http://akka-ftp.blogspot.co.uk/2015/12/introduction-to-akka-ftp.html) and the follow-up posts.
 
+Feedback email cftp@coldcore.com
+
 ## Running the server ##
 
 You need to install [SBT](http://www.scala-sbt.org) to build and run the server. Then clone the repository and from the project directory `sbt run`:
