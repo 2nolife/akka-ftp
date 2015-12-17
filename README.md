@@ -17,7 +17,7 @@ $ sbt run
 [info] Running com.coldcore.akkaftp.Launcher
 ```
 
-To stop the server either `^C` or send a GET request to [http://localhost:2080/api/action/shutdown](http://localhost:2080/api/action/shutdown)
+To stop the server either `^C` or send a GET request to [http://localhost:8021/api/action/shutdown](http://localhost:8021/api/action/shutdown)
 
 ## Big thank you goes to ##
 
