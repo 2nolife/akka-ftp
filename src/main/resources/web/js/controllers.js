@@ -9,7 +9,7 @@ controllers.controller('dashboardCtrl', function($scope, $timeout, dashboardServ
     dashboardService.get(
       function(data) {
         $scope.sessionCount = data.sessionCount;
-        $scope.traffic = data.traffic;
+        trafficToUnits(data.traffic);
         promise = $timeout($scope.getDashboard, 2*1000);
       },
       function() {
@@ -22,6 +22,20 @@ controllers.controller('dashboardCtrl', function($scope, $timeout, dashboardServ
   $scope.$on('$destroy', function(){
     $timeout.cancel(promise);
   });
+
+  function trafficToUnits(traffic) {
+    $scope.uploadSpeed = bytesToSize(traffic.uploadByteSec)+"/s";
+    $scope.downloadSpeed = bytesToSize(traffic.downloadByteSec)+"/s";
+    $scope.uploadTotal = bytesToSize(traffic.uploadedBytes);
+    $scope.downloadTotal = bytesToSize(traffic.downloadedBytes);
+  }
+
+  function bytesToSize(bytes) {
+    var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes == 0) return '0 B';
+    var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+    return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+  }
 
 });
 
