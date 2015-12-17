@@ -330,13 +330,18 @@ object DataConnector {
   case class Cancel(session: Session)
 
   val attr = "DataConnector.actorRef"
+
+  class PortsIterator(ports: Seq[Int]) {
+    val pt = ports.iterator
+    def next: Int = this.synchronized { pt.next() }
+  }
 }
 
 class DataConnector(hostname: String, ports: Seq[Int], ipresolv: String => String) extends Actor with ActorLogging {
   import DataConnector._
 
   val nodes = {
-    val pt = ports.iterator
+    val pt = new PortsIterator(ports)
     context.actorOf(DataConnectorNode.props(hostname, pt).withRouter(RoundRobinPool(ports.size)), name = "node")
   }
 
@@ -368,7 +373,7 @@ class DataConnector(hostname: String, ports: Seq[Int], ipresolv: String => Strin
 }
 
 object DataConnectorNode {
-  def props(hostname: String, pt: Iterator[Int]): Props =
+  def props(hostname: String, pt: DataConnector.PortsIterator): Props =
     Props(new DataConnectorNode(hostname, pt))
 
   case class Reserve(session: Session, attempt: Int, owner: ActorRef)
@@ -376,7 +381,7 @@ object DataConnectorNode {
   case class Success(session: Session, port: Int, owner: ActorRef)
 }
 
-class DataConnectorNode(hostname: String, pt: Iterator[Int]) extends Actor with ActorLogging {
+class DataConnectorNode(hostname: String, pt: DataConnector.PortsIterator) extends Actor with ActorLogging {
   import DataConnectorNode._
   import context.dispatcher
 
