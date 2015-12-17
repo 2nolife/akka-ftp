@@ -68,7 +68,6 @@ controllers.controller('disconnectedCtrl', function($scope, $timeout, sessionSer
 });
 
 controllers.controller('controlCtrl', function($scope, controlService) {
-
   var doAction = function(action) {
     controlService.action(action).get(
         function (data) {
@@ -97,5 +96,17 @@ controllers.controller('controlCtrl', function($scope, controlService) {
   };
 
   doAction("status");
+
+});
+
+controllers.controller('mainNavCtrl', function($scope, $location) {
+  $scope.activeNav = 'control';
+
+  $scope.pathStartsWith = function (path) {
+    return $location.path().substr(0, path.length) === path ? 'active' : '';
+  }
+  $scope.pathEquals = function (path) {
+    return $location.path() === path ? 'active' : '';
+  }
 
 });

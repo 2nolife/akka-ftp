@@ -1,5 +1,5 @@
 <!doctype html>
-<html data-ng-app="akkaFtp">
+<html ng-app="akkaFtp">
 
 <head>
   <meta charset="utf-8">
@@ -39,20 +39,22 @@
 
 <div class="container-fluid">
   <div class="row">
-    <div class="col-sm-3 col-md-2 sidebar">
+    <div class="col-sm-3 col-md-2 sidebar" ng-controller="mainNavCtrl">
       <ul class="nav nav-sidebar">
-        <li class="active"><a href="#/">Dashboard <span class="sr-only">(current)</span></a></li>
-        <li><a href="#/sessions">Active sessions</a></li>
-        <li><a href="#/disconnected">Disconnected sessions</a></li>
-        <li><a href="#/control">Server settings</a></li>
+        <li ng-class="pathEquals('/')"><a href="#/">Dashboard</a></li>
+        <li ng-class="pathStartsWith('/sessions')"><a href="#/sessions">Active sessions</a></li>
+        <li ng-class="pathStartsWith('/disconnected')"><a href="#/disconnected">Disconnected sessions</a></li>
+        <li ng-class="pathStartsWith('/control')"><a href="#/control">Server settings</a></li>
       </ul>
       <ul class="nav nav-sidebar">
         <li><a href="https://github.com/2nolife/akka-ftp" target="_blank">Project on GitHub</a></li>
         <li><a href="http://akka-ftp.blogspot.co.uk" target="_blank">Project blog</a></li>
       </ul>
+<!--
       <ul class="nav nav-sidebar">
         <li><a href="">Log out</a></li>
       </ul>
+-->
     </div>
 
     <div id="content" data-ng-view></div>
