@@ -1,9 +1,11 @@
 # Akka-FTP
 
-The Akka-FTP project is the reactive FTP server which uses Akka actors under the hood. It also provides the AngularJS web dashboard with Spray backend. Version 1.0 and the documantation expected to be released in December 2015.
+The Akka-FTP project is the reactive FTP server which uses Akka actors under the hood. It also provides the AngularJS web dashboard with Spray backend.
 
 For details check out the [Akka-FTP blog](http://akka-ftp.blogspot.co.uk).
 Please read the [introduction chapter](http://akka-ftp.blogspot.co.uk/2015/12/introduction-to-akka-ftp.html) and the follow-up posts.
+
+Feedback email cftp@coldcore.com
 
 ## Running the server ##
 
@@ -15,7 +17,7 @@ $ sbt run
 [info] Running com.coldcore.akkaftp.Launcher
 ```
 
-To stop the server either `^C` or send a GET request to [http://localhost:2080/api/action/shutdown](http://localhost:2080/api/action/shutdown)
+To stop the server either `^C` or send a GET request to [http://localhost:8021/api/action/shutdown](http://localhost:8021/api/action/shutdown)
 
 ## Big thank you goes to ##
 
@@ -38,4 +40,4 @@ TODO Please read this chapter before submitting a bug. TODO
 
 ## Release notes ##
 
-TODO Release 1.0 TODO
+[Release 1.0](http://akka-ftp.blogspot.co.uk/2015/12/akka-ftp-release-10.html)
