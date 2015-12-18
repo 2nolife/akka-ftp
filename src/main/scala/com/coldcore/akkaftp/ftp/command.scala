@@ -73,7 +73,6 @@ trait DataTransferOps {
   def closeChannel() {
     session.dataTransferChannel.foreach(_.safeClose())
     session.dataTransferChannel = None
-    session.dataFilename = None
   }
 }
 
@@ -379,6 +378,7 @@ abstract class ListNlstCommand(param: String, val session: Session) extends Comm
       case Right(listdir) =>
         val str = serializeList(listdir.listFiles)
         val rbc = Channels.newChannel(new ByteArrayInputStream(str.getBytes(UTF8)))
+        session.dataFilename = None
         session.dataTransferMode = Some(ListDTM)
         session.dataTransferChannel = Some(rbc)
         openerNotSet.getOrElse {
@@ -760,6 +760,7 @@ case class MlsdCommand(param: String, override val session: Session) extends Mld
         if (listdir.exists) {
           val str = listDir(listdir)
           val rbc = Channels.newChannel(new ByteArrayInputStream(str.getBytes(UTF8)))
+          session.dataFilename = None
           session.dataTransferMode = Some(ListDTM)
           session.dataTransferChannel = Some(rbc)
           openerNotSet.getOrElse {

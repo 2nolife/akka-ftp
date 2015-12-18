@@ -216,7 +216,6 @@ object DataConnection { //todo inactive timeout
   def resetSession(session: Session) {
     session.dataTransferChannel.foreach(_.safeClose())
     session.dataTransferChannel = None
-    session.dataFilename = None
   }
 }
 
