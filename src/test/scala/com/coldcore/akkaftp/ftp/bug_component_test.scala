@@ -3,9 +3,10 @@ package test
 
 import org.scalatest.{Matchers, WordSpec}
 import org.scalatest.mock.MockitoSugar
-import com.coldcore.akkaftp.ftp.core.{Session, FtpState}
+import com.coldcore.akkaftp.ftp.core.FtpState
 import com.coldcore.akkaftp.ftp.filesystem.{File, FileSystem}
 import org.mockito.Mockito._
+import com.coldcore.akkaftp.ftp.session.Session
 
 class BugComponentSpec extends WordSpec with MockitoSugar with Matchers {
 

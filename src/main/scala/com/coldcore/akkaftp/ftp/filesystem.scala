@@ -6,7 +6,7 @@ import java.nio.channels.{ReadableByteChannel, WritableByteChannel}
 import java.util.Date
 import java.util.regex.Pattern
 
-import com.coldcore.akkaftp.ftp.core.Session
+import com.coldcore.akkaftp.ftp.session.Session
 
 trait FileSystem {
   val separator: String = "/"

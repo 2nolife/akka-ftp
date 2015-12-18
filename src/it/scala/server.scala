@@ -5,7 +5,7 @@ import java.util.Date
 
 import com.coldcore.akkaftp.Launcher
 import akka.actor.ActorSystem
-import com.coldcore.akkaftp.ftp.core.{Session, FtpState}
+import com.coldcore.akkaftp.ftp.core.FtpState
 import com.coldcore.akkaftp.ftp.filesystem.{ListingFile, File, FileSystem}
 import java.nio.channels.{Channels, WritableByteChannel, ReadableByteChannel}
 import com.coldcore.akkaftp.ftp.userstore.UserStore
@@ -15,6 +15,7 @@ import scala.concurrent.duration._
 import Utils._
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.text.SimpleDateFormat
+import com.coldcore.akkaftp.ftp.session.Session
 
 class CustomFtpState(override val system: ActorSystem,
                      override val hostname: String,

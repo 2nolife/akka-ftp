@@ -4,7 +4,7 @@ package datafilter
 import java.nio.ByteBuffer
 import java.nio.channels.{WritableByteChannel, ReadableByteChannel}
 
-import com.coldcore.akkaftp.ftp.core.Session
+import com.coldcore.akkaftp.ftp.session.Session
 
 trait DataFilter {
   /** Test if this data filter may change the length of the data in a stream.

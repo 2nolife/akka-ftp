@@ -2,13 +2,13 @@ package com.coldcore.akkaftp.rest
 package service
 
 import java.text.SimpleDateFormat
-import java.util.Date
 
 import akka.actor.{ActorLogging, Props, SupervisorStrategy}
 import akka.io.IO
 import com.coldcore.akkaftp.ftp.core.FtpState
 import com.coldcore.akkaftp.rest.core.AdminAuthenticator
 import com.coldcore.akkaftp.rest.model._
+import com.coldcore.akkaftp.rest.Convert._
 import spray.can.Http
 import spray.http.StatusCodes
 import spray.httpx.SprayJsonSupport
@@ -31,16 +31,6 @@ class RestService(hostname: String, port: Int, ftpstate: FtpState) extends HttpS
 
   //todo die when FTP dies context.watch FTP actor
 
-  import com.coldcore.akkaftp.ftp.core.{Session => FSession}
-  def toSession(sdf: SimpleDateFormat)(x: FSession): Session =
-    Session(
-      x.id,
-      x.attributes.get[Date]("connected.date").map(sdf.format).orNull,
-      x.attributes.get[Date]("lastCommand.date").map(sdf.format).orNull,
-      x.username.orNull,
-      x.uploadedBytes,
-      x.downloadedBytes)
-
   override def supervisorStrategy = SupervisorStrategy.stoppingStrategy
 
   def receive =
@@ -59,14 +49,29 @@ class RestService(hostname: String, port: Int, ftpstate: FtpState) extends HttpS
             }
           }
         } ~
-        path("sessions") {
-          get {
-            parameter('disconnected.?) { dsc =>
-              complete {
-                val (rg, sdf) = (ftpstate.registry, new SimpleDateFormat("dd/MM/yyyy HH:mm:ss"))
-                val sessions = dsc.map(_ => rg.disconnected).getOrElse(rg.sessions).map(toSession(sdf))
-                Sessions(sessions)
+        pathPrefix("sessions") {
+          pathEnd {
+            get {
+              parameter('disconnected.?) { dsc =>
+                complete {
+                  val (rg, sdf) = (ftpstate.registry, new SimpleDateFormat("dd/MM/yyyy HH:mm:ss"))
+                  val sessions = dsc.map(_ => rg.disconnected).getOrElse(rg.sessions).map(toBriefSession(sdf))
+                  Sessions(sessions)
+                }
               }
+            }
+          } ~
+          path(Segment) { id =>
+            get {
+              val safeLong = (s: String) => try { s.toLong } catch { case _: Throwable => -1 }
+              val (rg, sdf) = (ftpstate.registry, new SimpleDateFormat("dd/MM/yyyy HH:mm:ss"))
+              rg.sessions.find(_.id == safeLong(id)).map { x => // 2 look-ups instead of (sessions ++ disconnected) for performance
+                complete(toVerboseSession(sdf)(x))
+              } orElse
+              rg.disconnected.find(_.id == safeLong(id)).map { x =>
+                complete(toVerboseSession(sdf)(x))
+              } getOrElse
+              complete(StatusCodes.NotFound)
             }
           }
         } ~

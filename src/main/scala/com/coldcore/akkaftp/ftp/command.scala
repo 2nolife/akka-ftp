@@ -17,6 +17,7 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Await}
 import ExecutionContext.Implicits.global
 import akka.pattern.ask
+import com.coldcore.akkaftp.ftp.session.Session
 
 case class Reply(code: Int, text: String = "", noop: Boolean = false, next: Option[Reply] = None) {
   def serialize: String =
@@ -67,12 +68,12 @@ trait DataTransferOps {
         system.actorOf(DataConnectionInitiator.props(ep, session), name = "data-initiator-"+ID.next)
       case None => throw new IllegalStateException(s"No data opener type set in session #${session.id}")
     }
-    session.dataMarker = 0
   }
 
   def closeChannel() {
     session.dataTransferChannel.foreach(_.safeClose())
     session.dataTransferChannel = None
+    session.dataFilename = None
   }
 }
 
@@ -454,6 +455,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
               session.dataFilename = Some(filename)
               session.dataTransferMode = Some(RetrDTM)
               session.dataTransferChannel = Some(rbc)
+              session.dataMarker = 0
               openerStart()
               Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
             }

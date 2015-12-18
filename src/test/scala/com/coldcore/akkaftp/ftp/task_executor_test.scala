@@ -1,12 +1,12 @@
 package com.coldcore.akkaftp.ftp
 package executor
 
-import com.coldcore.akkaftp.ftp.core.Session
 import org.scalatest._
 import org.scalatest.mock.MockitoSugar
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import com.coldcore.akkaftp.ftp.command.UserCommand
+import com.coldcore.akkaftp.ftp.session.Session
 
 class TaskExecutorSpec(_system: ActorSystem) extends TestKit(_system) with ImplicitSender
 with FlatSpecLike with MockitoSugar with BeforeAndAfterAll with Matchers {

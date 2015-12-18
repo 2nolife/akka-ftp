@@ -17,6 +17,7 @@ import scala.annotation.tailrec
 import akka.io.Tcp.NoAck
 import scala.concurrent.duration.DurationInt
 import akka.routing.{Broadcast, RoundRobinPool}
+import com.coldcore.akkaftp.ftp.session.{DataExchangeEnd, DataExchangeStart, CtrlExchange, Session}
 
 object ControlConnector {
   def props(endpoint: InetSocketAddress, ftpstate: FtpState, executor: ActorRef): Props =
@@ -87,6 +88,7 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
         buffer.extract match {
           case Some(text) => // execute the command
             log.debug("{} ---> {}", remote, text)
+            session <-- CtrlExchange(text, userToServer = true)
             val command = ftpstate.commandFactory.create(text, session)
             self ! Extracted(command)
           case None => // or if the connection is poisoned
@@ -96,11 +98,11 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
     case Extracted(command) => // execute the command now
       executing = Some(command)
       executor ! command
-      session.attributes.set("lastCommand.date", new Date())
 
     case TaskExecutor.Executed(UnavailableCommand(_), reply) => // send 421 reply
       connection ! Tcp.Write(reply)
       log.debug("{} <--- {}", remote, reply.serialize.trim)
+      session <-- CtrlExchange(reply.serialize, userToServer = false)
       connection ! Tcp.Close
 
     case TaskExecutor.Executed(command, reply) if reply.noop => // do not send a reply
@@ -110,6 +112,7 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
       @tailrec def write(command: Command, reply: Reply) {
         connection ! Tcp.Write(reply, if (reply.next.isEmpty) Ack(command) else NoAck)
         log.debug("{} <--- {}", remote, reply.serialize.trim)
+        session <-- CtrlExchange(reply.serialize, userToServer = false)
 
         if (reply.code >= 100 && reply.code <= 199 ) { // code 1xx
           session.interruptState = true
@@ -145,7 +148,7 @@ class ControlConnection(remote: InetSocketAddress, connection: ActorRef, ftpstat
     case DataConnection.Aborted => // transfer aborted by the user
       executor ! TransferAbortedCommand(session)
 
-    case CommonActions.SessionAliveIN => // respond or receive Kill
+    case CommonActions.SessionAliveIN(_) => // respond or receive Kill
       sender ! CommonActions.SessionAliveOUT(session)
 
     case _: Tcp.ConnectionClosed => // good
@@ -211,8 +214,9 @@ object DataConnection { //todo inactive timeout
   case object Aborted extends ReportState
 
   def resetSession(session: Session) {
-    session.dataConnection = None
+    session.dataTransferChannel.foreach(_.safeClose())
     session.dataTransferChannel = None
+    session.dataFilename = None
   }
 }
 
@@ -300,9 +304,13 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
         case StorDTM | StouDTM => // write from the channel source to a client
           context.become(readReceive orElse defReceive)
           wbc = session.dataTransferChannel.get.asInstanceOf[WritableByteChannel]
+          if (session.dataFilename.isDefined)
+            session <-- DataExchangeStart(session.dataFilename.getOrElse(""), userToServer = false)
         case RetrDTM | ListDTM => // read from a client into the channel dest
           context.become(writeReceive orElse defReceive)
           rbc = session.dataTransferChannel.get.asInstanceOf[ReadableByteChannel]
+          if (session.dataFilename.isDefined)
+            session <-- DataExchangeStart(session.dataFilename.getOrElse(""), userToServer = true)
           self ! Write
       }
 
@@ -313,6 +321,9 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
   override def postStop() {
     session.ctrl ! report.getOrElse(Failed) // notify the control connection
     log.debug("Closing connection to remote address {}", remote)
+    if (session.dataFilename.isDefined)
+      session <-- DataExchangeEnd(session.dataFilename.getOrElse(""), userToServer = rbc != null,
+                                  success = report == Some(Success))
     resetSession(session)
     super.postStop()
   }

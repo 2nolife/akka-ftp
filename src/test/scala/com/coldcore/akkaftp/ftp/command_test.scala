@@ -1,13 +1,14 @@
 package com.coldcore.akkaftp.ftp
 package command
 
-import com.coldcore.akkaftp.ftp.core.{FtpState, Session}
+import com.coldcore.akkaftp.ftp.core.FtpState
 import com.coldcore.akkaftp.ftp.core.Constants.EoL
 import org.scalatest.{Matchers, WordSpec}
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import com.coldcore.akkaftp.ftp.filesystem.{ListingFile, FileSystem, File}
 import java.util.Date
+import com.coldcore.akkaftp.ftp.session.Session
 
 class CommandsSpec extends WordSpec with MockitoSugar with Matchers {
 

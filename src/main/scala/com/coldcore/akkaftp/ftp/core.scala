@@ -2,18 +2,18 @@ package com.coldcore.akkaftp.ftp
 package core
 
 import java.net.{NetworkInterface, InetSocketAddress}
-import java.nio.channels.Channel
 import java.util.concurrent.atomic.AtomicLong
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorSystem
 import com.coldcore.akkaftp.Util
 import com.coldcore.akkaftp.ftp.command.{CommandFactory, DefaultCommandFactory}
 import com.coldcore.akkaftp.ftp.connection.{DataConnector, ControlConnector}
 import com.coldcore.akkaftp.ftp.datafilter.{SessionKeeper, TrafficCounter, DataFilterFactory, DataFilterApplicator}
 import com.coldcore.akkaftp.ftp.executor.TaskExecutor
-import com.coldcore.akkaftp.ftp.filesystem.{DiskFileSystem, File, FileSystem}
+import com.coldcore.akkaftp.ftp.filesystem.{DiskFileSystem, FileSystem}
 import com.coldcore.akkaftp.ftp.userstore.{PropsUserStore, UserStore}
 import scala.collection.JavaConverters._
+import com.coldcore.akkaftp.ftp.session.{SessionFactory, Session}
 
 object Constants {
   val EoL = "\r\n"
@@ -84,17 +84,17 @@ object ID {
 }
 
 class Registry {
-  var (sessions, disconnected) = (Seq.empty[Session], Seq.empty[Session])
+  var (sessions, disconnected) = (List.empty[Session], List.empty[Session])
 
   def addSession(session: Session) =
     this.synchronized {
-      sessions = sessions :+ session
+      sessions = session :: sessions
     }
 
   def remSession(session: Session) =
     this.synchronized {
       sessions = sessions diff Seq(session)
-      disconnected = disconnected :+ session
+      disconnected = session :: disconnected
     }
 
   var (uploadByteSec, downloadByteSec, uploadedBytes, downloadedBytes) = (0L, 0L, 0L, 0L)
@@ -117,52 +117,7 @@ case object StouDTM extends DataTransferMode // same as STOR, only send "250" re
 case object RetrDTM extends DataTransferMode // read data from file and send it to user
 case object ListDTM extends DataTransferMode // send directory content to user
 
-class Session(val ctrl: ActorRef, val ftpstate: FtpState, val remote: InetSocketAddress) {
-  val id = ID.next
-
-  var username: Option[String] = None
-  var password: Option[String] = None
-  var loggedIn = false
-
-  var interruptState = false
-  var poisoned = false
-
-  var dataType = "A"
-  var dataMode = "S"
-  var dataStructure = "F"
-  var dataOpenerType: Option[DataOpenerType] = None
-  var dataEndpoint: Option[InetSocketAddress] = None
-  var dataMarker = 0L
-
-  var dataTransferMode: Option[DataTransferMode] = None
-  var dataTransferChannel: Option[Channel] = None
-  var dataFilename: Option[String] = None
-
-  var dataConnection: Option[ActorRef] = None
-
-  var homeDir: File = _
-  var currentDir: File = _
-
-  def login() {
-    loggedIn = true
-    ftpstate.fileSystem.login(this)
-    require(homeDir != null, "Home dir not set")
-    require(currentDir != null, "Current dir not set")
-  }
-
-  def guest = username.exists("anonymous"==)
-
-  val attributes = new CustomAttributes
-
-  var (uploadedBytes, downloadedBytes) = (0L, 0L)
-}
-
-/** Overwrite this if you need to provide your own session implementation */
-class SessionFactory {
-  def session(ctrl: ActorRef, ftpstate: FtpState, remote: InetSocketAddress) = new Session(ctrl, ftpstate, remote)
-}
-
 object CommonActions {
-  case object SessionAliveIN
+  case class SessionAliveIN(session: Session)
   case class SessionAliveOUT(session: Session)
 }

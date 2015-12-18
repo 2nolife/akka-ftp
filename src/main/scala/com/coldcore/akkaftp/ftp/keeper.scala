@@ -1,10 +1,12 @@
 package com.coldcore.akkaftp.ftp
 package datafilter
 
-import akka.actor.{Kill, Actor, ActorLogging, Props}
-import com.coldcore.akkaftp.ftp.core.{CommonActions, Session, Registry}
+import akka.actor._
+import com.coldcore.akkaftp.ftp.core.{CommonActions, Registry}
 
 import scala.concurrent.duration.DurationInt
+import com.coldcore.akkaftp.ftp.session.Session
+import akka.routing.RoundRobinPool
 
 object TrafficCounter {
   def props(registry: Registry): Props = Props(new TrafficCounter(registry))
@@ -38,12 +40,15 @@ class TrafficCounter(registry: Registry) extends Actor with ActorLogging {
 
 object SessionKeeper {
   def props(registry: Registry): Props = Props(new SessionKeeper(registry))
+
 }
 
 class SessionKeeper(registry: Registry) extends Actor with ActorLogging {
   import context.dispatcher
 
   case object Tick
+
+  val nodes = context.actorOf(SessionKeeperNode.props(registry).withRouter(RoundRobinPool(4)), name = "node")
 
   context.system.scheduler.schedule(10.second, 10.second, self, Tick)
 
@@ -61,11 +66,30 @@ class SessionKeeper(registry: Registry) extends Actor with ActorLogging {
       } else { // mark all sessions as dead and send "alive" message
         registry.sessions.foreach { session =>
           dead += session
-          session.ctrl ! CommonActions.SessionAliveIN
+          session.ctrl ! CommonActions.SessionAliveIN(session)
         }
       }
+
+      registry.sessions.foreach(nodes ! SessionKeeperNode.TickEvent(_))
 
     case CommonActions.SessionAliveOUT(session) => // session is alive
       dead -= session
   }
 }
+
+object SessionKeeperNode {
+  def props(registry: Registry): Props = Props(new SessionKeeperNode(registry))
+
+  case class TickEvent(session: Session)
+}
+
+class SessionKeeperNode(registry: Registry) extends Actor with ActorLogging {
+  import SessionKeeperNode._
+  import session.{Tick => STick}
+
+  def receive = {
+    case TickEvent(session) => // session maintenance event
+      session <-- STick
+  }
+}
+

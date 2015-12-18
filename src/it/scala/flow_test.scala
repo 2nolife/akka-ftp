@@ -1,7 +1,6 @@
 package com.coldcore.akkaftp.it
 package test
 
-
 import com.coldcore.akkaftp.it.client.FtpClient
 import com.coldcore.akkaftp.it.server.{CreateSampleFiles, FtpServer}
 import org.scalatest._
