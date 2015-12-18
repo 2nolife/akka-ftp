@@ -16,11 +16,11 @@
         </thead>
         <tbody>
         <tr ng-repeat="x in sessions">
-          <td>{{x.id}}</td>
+          <td><a href="#/sessions/{{x.id}}">{{x.id}}</a></td>
           <td>{{x.username}}</td>
           <td>{{x.lastCommand}}</td>
-          <td>{{x.uploadedBytes}}</td>
-          <td>{{x.downloadedBytes}}</td>
+          <td>{{x.uploadTotal}}</td>
+          <td>{{x.downloadTotal}}</td>
         </tr>
         </tbody>
       </table>

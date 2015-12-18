@@ -12,6 +12,10 @@ services.factory('sessionService', function($resource) {
   service.sessions = $resource('/api/sessions');
   service.disconnected = $resource('/api/sessions?disconnected');
 
+  service.session = function(id) {
+    return $resource('/api/sessions/'+id);
+  };
+
   return service;
 });
 

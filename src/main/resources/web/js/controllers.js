@@ -30,13 +30,6 @@ controllers.controller('dashboardCtrl', function($scope, $timeout, dashboardServ
     $scope.downloadTotal = bytesToSize(traffic.downloadedBytes);
   }
 
-  function bytesToSize(bytes) {
-    var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    if (bytes == 0) return '0 B';
-    var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
-    return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
-  }
-
 });
 
 controllers.controller('sessionsCtrl', function($scope, $timeout, sessionService) {
@@ -46,6 +39,7 @@ controllers.controller('sessionsCtrl', function($scope, $timeout, sessionService
     sessionService.sessions.get(
         function (data) {
           $scope.sessions = data.sessions;
+          trafficToUnits(data.sessions)
           promise = $timeout($scope.getSessions, 10*1000);
         },
         function () {
@@ -58,6 +52,14 @@ controllers.controller('sessionsCtrl', function($scope, $timeout, sessionService
   $scope.$on('$destroy', function(){
     $timeout.cancel(promise);
   });
+
+  function trafficToUnits(sessions) {
+    sessions.forEach(function(x) {
+      x.uploadTotal = bytesToSize(x.uploadedBytes);
+      x.downloadTotal = bytesToSize(x.downloadedBytes);
+    });
+  }
+
 });
 
 controllers.controller('disconnectedCtrl', function($scope, $timeout, sessionService) {
@@ -67,6 +69,7 @@ controllers.controller('disconnectedCtrl', function($scope, $timeout, sessionSer
     sessionService.disconnected.get(
         function (data) {
           $scope.sessions = data.sessions;
+          trafficToUnits(data.sessions)
           promise = $timeout($scope.getSessions, 10*1000);
         },
         function () {
@@ -79,6 +82,14 @@ controllers.controller('disconnectedCtrl', function($scope, $timeout, sessionSer
   $scope.$on('$destroy', function(){
     $timeout.cancel(promise);
   });
+
+  function trafficToUnits(sessions) {
+    sessions.forEach(function(x) {
+      x.uploadTotal = bytesToSize(x.uploadedBytes);
+      x.downloadTotal = bytesToSize(x.downloadedBytes);
+    });
+  }
+
 });
 
 controllers.controller('controlCtrl', function($scope, controlService) {
@@ -122,5 +133,29 @@ controllers.controller('mainNavCtrl', function($scope, $location) {
   $scope.pathEquals = function (path) {
     return $location.path() === path ? 'active' : '';
   }
+
+});
+
+controllers.controller('sessionCtrl', function($scope, $timeout, $routeParams, sessionService) {
+  var promise;
+
+  $scope.sessionId = $routeParams.id;
+
+  $scope.getSession = function() {
+    sessionService.session($scope.sessionId).get(
+      function (data) {
+        $scope.payload = data;
+        promise = $timeout($scope.getSession, 2*1000);
+      },
+      function () {
+        console.error('disconneced');
+      }
+    )
+  };
+  $scope.getSession();
+
+  $scope.$on('$destroy', function(){
+    $timeout.cancel(promise);
+  });
 
 });
