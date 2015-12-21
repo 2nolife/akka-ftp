@@ -36,7 +36,7 @@ This code is open source software licensed under the [GNU Lesser General Public 
 
 ## Bug list ##
 
-TODO Please read this chapter before submitting a bug. TODO
+Please read [this chapter](http://akka-ftp.blogspot.co.uk/2015/12/bug-bug-there-is-ladybug.html) before submitting a bug.
 
 ## Release notes ##
 
