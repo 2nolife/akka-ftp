@@ -383,6 +383,7 @@ abstract class ListNlstCommand(param: String, val session: Session) extends Comm
         session.dataTransferChannel = Some(rbc)
         openerNotSet.getOrElse {
           openerStart()
+          Thread.sleep(50) // give some time to a data connection to become ready before sending 150 reply
           Reply(150, s"Opening A mode data connection for ${listdir.path}.")
         }
       case Left(reply) =>
@@ -457,6 +458,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
               session.dataTransferChannel = Some(rbc)
               session.dataMarker = 0
               openerStart()
+              Thread.sleep(50) // give some time to a data connection to become ready before sending 150 reply
               Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
             }
           case Left(reply) =>
@@ -478,6 +480,7 @@ abstract class StorAppeStouCommand(session: Session) extends Command with Logged
           session.dataTransferMode = Some(StorDTM)
           session.dataTransferChannel = Some(wbc)
           openerStart()
+          Thread.sleep(50) // give some time to a data connection to become ready before sending 150 reply
           Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
         }
       case Left(reply) =>
@@ -765,6 +768,7 @@ case class MlsdCommand(param: String, override val session: Session) extends Mld
           session.dataTransferChannel = Some(rbc)
           openerNotSet.getOrElse {
             openerStart()
+            Thread.sleep(50) // give some time to a data connection to become ready before sending 150 reply
             Reply(150, s"Opening A mode data connection for MLSD ${listdir.path}.")
           }
         } else {

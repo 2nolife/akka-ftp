@@ -314,7 +314,7 @@ class DataConnection(remote: InetSocketAddress, connection: ActorRef, session: S
       }
 
     case StartTransfer => // reschedule, not ready (client did not send a command yet)
-      context.system.scheduler.scheduleOnce(100.milliseconds, self, StartTransfer)
+      context.system.scheduler.scheduleOnce(10.milliseconds, self, StartTransfer)
   }
 
   override def postStop() {
