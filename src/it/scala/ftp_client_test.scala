@@ -56,7 +56,7 @@ class FtpClientSpec extends FlatSpec with BeforeAndAfterAll with BeforeAndAfter 
     server.fileData("/cdef.txt") should be ("cdef".getBytes)
   }
 
-  it should "RERT a file with PORT" in {
+  it should "RETR a file with PORT" in {
     server.addFile("/qwer.txt", "qwer".getBytes)
     client.anonymousLogin()
     client.portMode()
