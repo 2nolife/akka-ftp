@@ -456,6 +456,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
               session.dataTransferMode = Some(RetrDTM)
               session.dataTransferChannel = Some(rbc)
               session.dataMarker = 0
+              openerStart()
               Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
             }
           case Left(reply) =>
