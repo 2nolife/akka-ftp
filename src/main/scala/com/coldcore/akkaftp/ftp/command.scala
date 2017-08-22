@@ -383,7 +383,7 @@ abstract class ListNlstCommand(param: String, val session: Session) extends Comm
         session.dataTransferChannel = Some(rbc)
         openerNotSet.getOrElse {
           openerStart()
-          Reply(150, s"Opening A mode data connection for ${listdir.path}.")
+          Reply(150, s"Opening A mode data connection for ${listdir.path}.") //todo race condition, 150 must be sent before a data connection completes with 226  - simulate with sleep(150) before the reply
         }
       case Left(reply) =>
         reply
@@ -457,7 +457,7 @@ case class RetrCommand(param: String, session: Session) extends Command with Log
               session.dataTransferChannel = Some(rbc)
               session.dataMarker = 0
               openerStart()
-              Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
+              Reply(150, s"Opening ${session.dataType} mode data connection for $filename.") //todo race condition, 150 must be sent before a data connection completes with 226  - simulate with sleep(150) before the reply
             }
           case Left(reply) =>
             reply
@@ -478,6 +478,7 @@ abstract class StorAppeStouCommand(session: Session) extends Command with Logged
           session.dataTransferMode = Some(StorDTM)
           session.dataTransferChannel = Some(wbc)
           openerStart()
+          Thread.sleep(150) // give some time to a data connection to become ready before sending 150 reply (todo use notification - simulate with UploadWithCurl case)
           Reply(150, s"Opening ${session.dataType} mode data connection for $filename.")
         }
       case Left(reply) =>
@@ -765,7 +766,7 @@ case class MlsdCommand(param: String, override val session: Session) extends Mld
           session.dataTransferChannel = Some(rbc)
           openerNotSet.getOrElse {
             openerStart()
-            Reply(150, s"Opening A mode data connection for MLSD ${listdir.path}.")
+            Reply(150, s"Opening A mode data connection for MLSD ${listdir.path}.") //todo race condition, 150 must be sent before a data connection completes with 226  - simulate with sleep(150) before the reply
           }
         } else {
           Reply(450, s"Path not found.")
